@@ -4,6 +4,18 @@ const target=process.argv[2]||'https://cobephim.ws/phim/de-che-dai-han/tap-77023
 const hits=[],all=[],bodies=[],seen=new Set();
 const interesting=/streamvsmov|m3u8|master\.m3u8|\.mpd|\.mp4|player|embed|iframe|stream|video/i;
 function rec(kind,url,extra={}){if(!url)return;const key=kind+'|'+url;if(seen.has(key))return;seen.add(key);const row={time:new Date().toISOString(),kind,url,...extra};all.push(row);if(interesting.test(url)){hits.push(row);console.log('HIT',kind,url)}}
+// Browser-network discovery on accessible mirror pages.
+const mirrorTargets=['https://motchilltv.zip/episodes/bay-vao-trai-tim-anh-tap-21/','https://motchilltv.zip/episodes/lan-huong-nhu-co-tap-4/'];
+const mirrorScan=[];
+async function scanMirror(url){
+ const b=await chromium.launch({headless:true,args:['--no-sandbox','--autoplay-policy=no-user-gesture-required']});
+ const cx=await b.newContext({userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36'}); const p=await cx.newPage(); const rows=[];
+ const keep=u=>/streamvsmov|streamc|m3u8|embed|player|video|ajax|api/i.test(u);
+ p.on('request',q=>{if(keep(q.url())){rows.push({kind:'request',url:q.url(),method:q.method(),type:q.resourceType()});console.log('MIRROR REQ',q.method(),q.resourceType(),q.url())}});
+ p.on('response',async r=>{if(keep(r.url())){rows.push({kind:'response',url:r.url(),status:r.status(),contentType:r.headers()['content-type']||''});console.log('MIRROR RES',r.status,r.url())}});
+ try{await p.goto(url,{waitUntil:'domcontentloaded',timeout:60000});await p.waitForTimeout(5000);for(const fr of p.frames()){for(const sel of ['video','button','[class*="play" i]','[id*="play" i]']){try{const es=fr.locator(sel),n=Math.min(await es.count(),10);for(let i=0;i<n;i++){try{if(sel==='video')await es.nth(i).evaluate(v=>{v.muted=true;return v.play()});else if(await es.nth(i).isVisible())await es.nth(i).click({timeout:1000})}catch{}}}catch{}}}await p.mouse.click(683,450).catch(()=>{});await p.waitForTimeout(15000);const perf=await p.evaluate(()=>performance.getEntriesByType('resource').map(x=>x.name));mirrorScan.push({url,title:await p.title(),frames:p.frames().map(x=>x.url()),rows,performance:perf.filter(keep)});}catch(e){mirrorScan.push({url,error:String(e),rows})} await b.close();
+}
+for(const u of mirrorTargets) await scanMirror(u);
 // Seed direct-provider intelligence from confirmed working stream.
 const knownStream='https://v1.streamvsmov.com/stream/db6efbfc-892b-4f05-8789-ccc4c6fad901/master.m3u8?expires=1789817888&signature=e4a63449ffb8f4a98e407d5df68ffd18f903886e44258306b5629ee20b506ab6';
 const providerProbe={knownStream,tests:[],discovery:[]};
@@ -59,6 +71,6 @@ try{
  html=await page.content();
 }catch(e){navError=String(e)}
 fs.writeFileSync('page.html',html);
-fs.writeFileSync('scan-result.json',JSON.stringify({target,finalUrl:page.url(),title,navError,frames,hits,all,bodies,providerProbe},null,2));
+fs.writeFileSync('scan-result.json',JSON.stringify({target,finalUrl:page.url(),title,navError,frames,hits,all,bodies,providerProbe,mirrorScan},null,2));
 console.log(JSON.stringify({target,finalUrl:page.url(),title,navError,frames,hits:hits.length,requests:all.length,bodies:bodies.length},null,2));
 await browser.close();
