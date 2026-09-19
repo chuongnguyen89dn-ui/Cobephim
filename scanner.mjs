@@ -4,6 +4,18 @@ const target=process.argv[2]||'https://cobephim.ws/phim/de-che-dai-han/tap-77023
 const hits=[],all=[],bodies=[],seen=new Set();
 const interesting=/streamvsmov|m3u8|master\.m3u8|\.mpd|\.mp4|player|embed|iframe|stream|video/i;
 function rec(kind,url,extra={}){if(!url)return;const key=kind+'|'+url;if(seen.has(key))return;seen.add(key);const row={time:new Date().toISOString(),kind,url,...extra};all.push(row);if(interesting.test(url)){hits.push(row);console.log('HIT',kind,url)}}
+// Seed direct-provider intelligence from confirmed working stream.
+const knownStream='https://v1.streamvsmov.com/stream/db6efbfc-892b-4f05-8789-ccc4c6fad901/master.m3u8?expires=1789817888&signature=e4a63449ffb8f4a98e407d5df68ffd18f903886e44258306b5629ee20b506ab6';
+const providerProbe={knownStream,tests:[]};
+try {
+  const u=new URL(knownStream);
+  for (const path of ['/', '/stream/db6efbfc-892b-4f05-8789-ccc4c6fad901/master.m3u8'+u.search]) {
+    const r=await fetch(u.origin+path,{headers:{'user-agent':'Mozilla/5.0','referer':'https://cobephim.ws/'}});
+    const text=await r.text();
+    providerProbe.tests.push({url:u.origin+path,status:r.status,contentType:r.headers.get('content-type'),server:r.headers.get('server'),allow:r.headers.get('allow'),body:text.slice(0,5000)});
+    console.log('PROVIDER',r.status,u.origin+path,r.headers.get('content-type'));
+  }
+} catch(e){providerProbe.error=String(e)}
 const browser=await chromium.launch({headless:true,args:['--disable-blink-features=AutomationControlled','--no-sandbox','--autoplay-policy=no-user-gesture-required']});
 const context=await browser.newContext({userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',viewport:{width:1365,height:900},locale:'vi-VN'});
 context.on('page',p=>{console.log('NEW PAGE',p.url());});
@@ -37,6 +49,6 @@ try{
  html=await page.content();
 }catch(e){navError=String(e)}
 fs.writeFileSync('page.html',html);
-fs.writeFileSync('scan-result.json',JSON.stringify({target,finalUrl:page.url(),title,navError,frames,hits,all,bodies},null,2));
+fs.writeFileSync('scan-result.json',JSON.stringify({target,finalUrl:page.url(),title,navError,frames,hits,all,bodies,providerProbe},null,2));
 console.log(JSON.stringify({target,finalUrl:page.url(),title,navError,frames,hits:hits.length,requests:all.length,bodies:bodies.length},null,2));
 await browser.close();
