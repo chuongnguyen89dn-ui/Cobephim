@@ -11,6 +11,7 @@ on:
     paths:
       - scanner.mjs
       - package.json
+      - .github/workflows/scan.yml
 jobs:
   scan:
     runs-on: ubuntu-latest
