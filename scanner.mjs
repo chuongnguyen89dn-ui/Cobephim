@@ -6,7 +6,17 @@ const interesting=/streamvsmov|m3u8|master\.m3u8|\.mpd|\.mp4|player|embed|iframe
 function rec(kind,url,extra={}){if(!url)return;const key=kind+'|'+url;if(seen.has(key))return;seen.add(key);const row={time:new Date().toISOString(),kind,url,...extra};all.push(row);if(interesting.test(url)){hits.push(row);console.log('HIT',kind,url)}}
 // Seed direct-provider intelligence from confirmed working stream.
 const knownStream='https://v1.streamvsmov.com/stream/db6efbfc-892b-4f05-8789-ccc4c6fad901/master.m3u8?expires=1789817888&signature=e4a63449ffb8f4a98e407d5df68ffd18f903886e44258306b5629ee20b506ab6';
-const providerProbe={knownStream,tests:[]};
+const providerProbe={knownStream,tests:[],discovery:[]};
+// Public pages using the same provider can expose the embed/player contract without Cobephim's Cloudflare wall.
+for (const url of ['https://motchilltv.zip/episodes/bay-vao-trai-tim-anh-tap-21/','https://motchilltv.zip/episodes/lan-huong-nhu-co-tap-4/']) {
+  try {
+    const r=await fetch(url,{headers:{'user-agent':'Mozilla/5.0'}}); const body=await r.text();
+    const found=[...body.matchAll(/https?:[^"'\\\\\\s<>]+/g)].map(x=>x[0].replace(/\\\\\//g,'/')).filter(x=>/streamvsmov|streamc|embed|m3u8|player/i.test(x));
+    const uuids=[...new Set(body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)||[])];
+    providerProbe.discovery.push({url,status:r.status,found:[...new Set(found)].slice(0,100),uuids,bodyMatches:(body.match(/.{0,150}(?:streamvsmov|streamc|embed|m3u8|player).{0,250}/gi)||[]).slice(0,50)});
+    console.log('DISCOVERY',url,r.status,'urls',found.length,'uuids',uuids.length); for(const x of [...new Set(found)].slice(0,30)) console.log('DISCOVERED',x);
+  } catch(e){providerProbe.discovery.push({url,error:String(e)})}
+}
 try {
   const u=new URL(knownStream);
   for (const path of ['/', '/stream/db6efbfc-892b-4f05-8789-ccc4c6fad901/master.m3u8'+u.search]) {
