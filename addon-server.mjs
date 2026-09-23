@@ -11,7 +11,7 @@ async function resolveMaster(){
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-blink-features=AutomationControlled','--autoplay-policy=no-user-gesture-required']});
   const cx=await browser.newContext({userAgent:hdr()['user-agent'],viewport:{width:390,height:844},locale:'vi-VN'});
   const p=await cx.newPage(); let found='';
-  const capture=u=>{if(/https?:\\/\\/[^ ]*streamvsmov[^ ]*master\\.m3u8/i.test(u))found=u};
+  const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8'))found=u}catch{}};
   p.on('request',q=>capture(q.url())); p.on('response',r=>capture(r.url()));
   await p.goto(TARGET,{waitUntil:'domcontentloaded',timeout:60000});
   for(let round=0;round<4&&!found;round++){
@@ -25,7 +25,7 @@ async function resolveMaster(){
   cached={url:found,at:Date.now()}; return found;
  }finally{await browser?.close()}
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.3',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.4',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const item=()=>({id:ID,type:'series',name:NAME,description:'CobePhim playback test'});
 function send(r,s,o){const b=JSON.stringify(o);r.writeHead(s,{'content-type':'application/json; charset=utf-8','access-control-allow-origin':'*','cache-control':'no-store'});r.end(b)}
 function hdr(){return {'user-agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1','referer':'https://cobephim.ws/','origin':'https://cobephim.ws'}}
