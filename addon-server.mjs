@@ -2,7 +2,7 @@ import http from 'node:http';
 import { chromium } from 'playwright';
 const PORT=Number(process.env.PORT||10000), BASE=(process.env.PUBLIC_BASE_URL||'https://cobephim-one-shot.onrender.com').replace(/\/$/,'');
 const ID='cobephim:de-che-dai-han:775372', NAME='Đế Chế Đại Hàn';
-const TARGET='https://cobephim.ws/phim/de-che-dai-han/tap-770232';
+const TARGET='https://cobephim.cfd/phim/de-che-dai-han';
 let cached={url:'',at:0,kind:''}; let warming=null;
 async function resolveMaster(){
  if(cached.url && Date.now()-cached.at<30*60*1000)return cached.url;
@@ -16,6 +16,14 @@ async function resolveMaster(){
   p.on('request',q=>{note('REQ',q.url());capture(q.url())}); p.on('response',r=>{note('RES '+r.status(),r.url());capture(r.url())});
   p.on('framenavigated',fr=>note('FRAME',fr.url()));
   await p.goto(TARGET,{waitUntil:'domcontentloaded',timeout:60000});
+  await p.waitForTimeout(2500);
+  let episode='';
+  for(const fr of p.frames())try{
+    episode=await fr.locator('a[href*="/tap-"]').evaluateAll((as)=>as.map(a=>a.href).find(Boolean)||'');
+    if(episode)break
+  }catch{}
+  if(episode){console.log('[resolver] episode_found '+episode);await p.goto(episode,{waitUntil:'domcontentloaded',timeout:60000});await p.waitForTimeout(1500)}
+  else console.log('[resolver] no_episode_link; using movie page controls');
   for(let round=0;round<4&&!found;round++){
    for(const fr of p.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{
     const es=fr.locator(sel),n=Math.min(await es.count(),8);
@@ -33,7 +41,7 @@ function warm(){
  warming=resolveMaster().catch(e=>{console.error('[warm]',e?.stack||e);return ''}).finally(()=>{warming=null});
  return warming;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.8',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.9',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const item=()=>({id:ID,type:'series',name:NAME,description:'CobePhim playback test'});
 function send(r,s,o){const b=JSON.stringify(o);r.writeHead(s,{'content-type':'application/json; charset=utf-8','access-control-allow-origin':'*','cache-control':'no-store'});r.end(b)}
 function hdr(){return {'user-agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1','referer':'https://cobephim.ws/','origin':'https://cobephim.ws'}}
