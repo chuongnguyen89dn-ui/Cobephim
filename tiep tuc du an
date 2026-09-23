@@ -11,3 +11,20 @@
 - Stream endpoint now returns only standards-compatible HTTP media URLs configured through MEDIA_SOURCES_JSON.
 - CobePhim remains the catalog/metadata layer; playback is intentionally decoupled from the proprietary CobePhim player.
 - No cookie/header replay, wrapper decryption, key extraction, or access-control bypass is implemented.
+
+
+=== CẬP NHẬT 23/09/2026 — PLAYBACK THÀNH CÔNG / HƯỚNG QUÉT TOÀN SITE ===
+- Repo Cobephim hiện có addon-server.mjs và Render service cobephim-one-shot.
+- Quy ước: MỖI lần cập nhật addon phải tăng version. Bản playback đã xác nhận phát được trên Nuvio: v0.4.9.
+- Không sửa lung tung phần playback v0.4.9 đang hoạt động; scanner/quét toàn site nên tách riêng để lỗi scanner không làm hỏng playback.
+- Bí quyết resolver đã xác nhận: không tìm link video cố định trong HTML. Mở trang phim/tập bằng Chromium/Playwright, kích hoạt player, theo dõi network sau khi JS/player đã chọn provider và sinh token/link.
+- Cobephim hiện thấy ít nhất 2 dạng nguồn:
+  1) StreamVSMov: player sinh URL master.m3u8 có expires/signature. Đây là dạng đã từng phát trực tiếp VLC. Signed URL có hạn nên không lưu chết làm nguồn lâu dài; resolve lại khi cần.
+  2) StreamC/Cyin: embed*.streamc.xyz -> cyin*.sbs/<hash>/streamaaa0000.png, 0001.png... Không nhất thiết lộ master.m3u8. Resolver nhận pattern segment và dựng HLS/proxy cho Nuvio; v0.4.9 đã phát thành công dạng này.
+- v0.4.8 từng thất bại do khóa cứng URL /tap-770232; site redirect về trang phim khiến warm timeout/502.
+- v0.4.9 sửa bằng cách vào trang phim hiện tại -> tự tìm link /tap-... -> mở tập -> kích hoạt player -> bắt provider/network. Người dùng đã xác nhận Nuvio PLAY ĐƯỢC.
+- Logo VS.bet nhìn thấy trong video không phải ưu tiên xử lý; bỏ qua để tập trung quét toàn site.
+- Hướng quét toàn site đã thống nhất: 2 tầng. Tầng 1 quét catalog nhanh (phim, slug/ID, poster/metadata, danh sách tập) bằng HTTP/RSC/HTML nếu có thể, không mở Chromium từng phim. Tầng 2 resolve video theo từng tập bằng cơ chế browser/network nói trên và phân loại provider.
+- Dữ liệu nên lưu theo movie -> episode -> provider -> resolver information/pattern; không lưu hàng loạt signed m3u8 hết hạn như kết quả cuối.
+- Provider chưa biết phải đánh dấu unknown để phân tích sau, không làm toàn bộ job thất bại.
+- Có thể resolve song song có giới hạn + cache/checkpoint, nhưng phải ưu tiên ổn định và không ảnh hưởng addon đang live.
