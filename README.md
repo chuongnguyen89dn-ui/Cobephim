@@ -1,9 +1,26 @@
-# Cobephim stream scanner
+# CobePhim browser-player add-on
 
-Network scanner using Playwright and GitHub Actions.
+This repository now contains two independent pieces:
 
-Default target: `https://cobephim.ws/phim/de-che-dai-han/tap-770232`
+- `addon-server.mjs`: Nuvio/Stremio-compatible manifest/catalog/meta/stream bridge.
+- `scanner.mjs` and `render-scanner.mjs`: diagnostic browser scanners kept for investigation.
 
-Known validation UUID: `db6efbfc-892b-4f05-8789-ccc4c6fad901`.
+## Why browser-player mode
 
-Run Actions > Scan Cobephim stream > Run workflow. The result is saved as the `cobephim-scan-result` artifact.
+The September 23 investigation identified JW Player 8.51.3 + hls.js/MSE. The observed HLS response used a non-standard `#ENC-AESGCM` wrapper and the browser produced a blob-backed video. No standard HLS/DASH/MP4 URL suitable for a normal Nuvio stream recipe was demonstrated.
+
+Therefore the add-on does not decrypt, proxy, rewrite, or bypass the provider stream. Its stream response uses `externalUrl` to open the provider-authorized episode/player page.
+
+## Run
+
+`npm start`
+
+Endpoints:
+
+- `/manifest.json`
+- `/catalog/series/cobephim.json`
+- `/meta/series/cobephim%3Ade-che-dai-han%3A775372.json`
+- `/stream/series/cobephim%3Ade-che-dai-han%3A775372.json`
+- `/health`
+
+The current commit intentionally contains one verified sample episode. Site-wide catalog ingestion is a separate next step; it must map public CobePhim metadata to stable add-on IDs without attempting to defeat the site's playback controls.
