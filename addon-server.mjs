@@ -41,8 +41,11 @@ function warm(){
  warming=resolveMaster().catch(e=>{console.error('[warm]',e?.stack||e);return ''}).finally(()=>{warming=null});
  return warming;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.9',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.10',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const item=()=>({id:ID,type:'series',name:NAME,description:'CobePhim playback test'});
+const SCANNER=(process.env.SCANNER_URL||'https://cobephim-full-scan.onrender.com').replace(/\/$/,'');
+let liveCatalog={at:0,metas:[],rows:[]};
+async function pullCatalog(){try{if(Date.now()-liveCatalog.at<15000&&liveCatalog.metas.length)return liveCatalog;const z=await fetch(SCANNER+'/',{headers:{'user-agent':hdr()['user-agent']}});if(!z.ok)throw Error('scanner '+z.status);const d=await z.json(),rows=Array.isArray(d.catalog)?d.catalog:[];const metas=rows.filter(x=>x.title).map(x=>({id:'cobephim:'+x.slug,type:'series',name:x.title,poster:x.poster||undefined,description:x.description||undefined,releaseInfo:x.year?String(x.year):undefined}));liveCatalog={at:Date.now(),metas,rows};console.log('[catalog] live movies='+metas.length+' scannerStatus='+d.status);return liveCatalog}catch(e){console.error('[catalog]',e.message);return liveCatalog}}
 function send(r,s,o){const b=JSON.stringify(o);r.writeHead(s,{'content-type':'application/json; charset=utf-8','access-control-allow-origin':'*','cache-control':'no-store'});r.end(b)}
 function hdr(){return {'user-agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1','referer':'https://cobephim.ws/','origin':'https://cobephim.ws'}}
 function p(kind,url){return BASE+'/proxy/'+kind+'?url='+encodeURIComponent(url)}
@@ -51,8 +54,8 @@ function strip(buf){for(let i=0;i<Math.min(buf.length,1048576);i++){if(buf[i]!==
 async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname==='/'||u.pathname==='/health')return send(r,200,{ok:true,version:manifest.version,manifest:BASE+'/manifest.json',testStream:BASE+'/stream/series/'+encodeURIComponent(ID)+'.json'});
  if(u.pathname==='/manifest.json')return send(r,200,manifest);
- if(u.pathname==='/catalog/series/cobephim.json')return send(r,200,{metas:[item()]});
- const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m)return send(r,200,{meta:decodeURIComponent(m[1])===ID?{...item(),videos:[{id:ID,title:'Tập thử'}]}:null});
+ if(u.pathname==='/catalog/series/cobephim.json'){const lc=await pullCatalog();return send(r,200,{metas:lc.metas.length?lc.metas:[item()]})}
+ const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid===ID)return send(r,200,{meta:{...item(),videos:[{id:ID,title:'Tập thử'}]}});const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
  const s=u.pathname.match(/^\/stream\/series\/(.+)\.json$/);if(s){const id=decodeURIComponent(s[1]);if(id===ID)warm();return send(r,200,{streams:id===ID?[{name:'CobePhim',title:'StreamVSMov proxy #1',url:BASE+'/resolve/'+encodeURIComponent(ID)+'.m3u8'}]:[]})}
  if(u.pathname.startsWith('/resolve/')){
    if(cached.kind==='segments'){const lines=['#EXTM3U','#EXT-X-VERSION:3','#EXT-X-TARGETDURATION:6','#EXT-X-MEDIA-SEQUENCE:0'];for(let i=0;i<1200;i++){lines.push('#EXTINF:4.000,');lines.push(p('segment',cached.url.replace('{n}',String(i).padStart(4,'0'))))}lines.push('#EXT-X-ENDLIST');r.writeHead(200,{'content-type':'application/vnd.apple.mpegurl','access-control-allow-origin':'*','cache-control':'no-store'});return r.end(lines.join('\n'))}
