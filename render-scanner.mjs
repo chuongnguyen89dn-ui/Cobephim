@@ -49,11 +49,17 @@ async function run(){
       const eps=[...new Set([...urls].map(episodeUrl).filter(Boolean))].filter(u=>!/\/tap-latest(?:$|[?#])/.test(u));
       row.episodes=eps.map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
       if(row.episodes.length){
-       for(const ep of row.episodes.slice(0,3)){
+       for(const ep of row.episodes){
         await page.goto(ep.url,{waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});
-        await page.waitForTimeout(900);
-        for(const fr of page.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),4);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:400})}catch{}}catch{}
-        await page.mouse.click(640,450).catch(()=>{});await page.waitForTimeout(1800);
+        await page.waitForTimeout(700);
+        const variants=await page.evaluate(()=>[...document.querySelectorAll('button,[role="button"],select option,a')].map((e,i)=>({i,text:(e.innerText||e.textContent||'').trim()})).filter(x=>/phụ đề|thuyết minh|lồng tiếng|server|#\d+/i.test(x.text)).slice(0,20)).catch(()=>[]);
+        const rounds=Math.max(1,variants.length);
+        for(let v=0;v<rounds;v++){
+         if(variants[v]){for(const fr of page.frames())try{const loc=fr.getByText(variants[v].text,{exact:true}).first();if(await loc.count())await loc.click({timeout:700})}catch{}}
+         for(const fr of page.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),6);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(x=>{x.muted=true;return x.play()}):await es.nth(i).click({timeout:350})}catch{}}catch{}
+         await page.mouse.click(640,450).catch(()=>{});await page.waitForTimeout(1400);
+        }
+        ep.variants=variants.map(x=>x.text);ep.resolver='harvested';
        }
       }
       row.status='indexed';
@@ -67,4 +73,4 @@ async function run(){
  finally{if(browser)await browser.close();state.finished=new Date().toISOString()}
 }
 run();
-http.createServer((req,res)=>{res.setHeader('content-type','application/json; charset=utf-8');if(req.url==='/health')return res.end(JSON.stringify({status:state.status,pages:state.pages,movies:state.movies,lastUrl:state.lastUrl,lastError:state.lastError,errors:state.errors.length}));res.end(JSON.stringify(state))}).listen(process.env.PORT||10000,'0.0.0.0');
+http.createServer((req,res)=>{res.setHeader('content-type','application/json; charset=utf-8');if(req.url==='/health')return res.end(JSON.stringify({status:state.status,pages:state.pages,movies:state.movies,media:state.media.length,lastUrl:state.lastUrl,lastError:state.lastError,errors:state.errors.length}));res.end(JSON.stringify(state))}).listen(process.env.PORT||10000,'0.0.0.0');
