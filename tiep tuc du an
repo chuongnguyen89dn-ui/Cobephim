@@ -34,3 +34,13 @@
 Mục tiêu được chốt: quét TOÀN BỘ Cobephim, không chỉ link video. Thu catalog/phim/tập, tên, poster/backdrop, metadata/mô tả, năm/thể loại và thông tin cần thiết để addon có giao diện/bố cục kiểu RoPhim; đồng thời resolve link phát cho từng tập theo 2 provider đã biết (StreamVSMov và StreamC/Cyin) và mở rộng cho provider mới.
 Kiến trúc: scanner/indexer riêng + database JSON/checkpoint riêng; addon live v0.4.9 giữ playback ổn định. Catalog scan ưu tiên HTTP/RSC/HTML nhanh; browser resolver chỉ dùng cho video/tập cần thiết. Không lưu signed URL hết hạn làm nguồn lâu dài. Scanner phải resume/checkpoint, dedupe, giới hạn concurrency, lưu trạng thái resolved/unknown/error. Mọi thay đổi addon live vẫn phải tăng version.
 Giao diện đầu ra/addon: tổ chức catalog theo phong cách RoPhim (hero/featured, phim mới cập nhật, phim bộ/phim lẻ, thể loại/quốc gia nếu dữ liệu có, poster/backdrop, trang chi tiết và tập), nhưng không sao chép tài sản thương hiệu/logo độc quyền của RoPhim.
+
+
+=== LÀM RÕ YÊU CẦU HIỂN THỊ — 23/09/2026 ===
+Cụm “như RoPhim” KHÔNG có nghĩa là thiết kế Cobephim theo giao diện/thương hiệu RoPhim. Nó có nghĩa là áp dụng đúng phương pháp đã dùng ở dự án RoPhim: WEB GỐC COBEPHIM THỂ HIỆN CÁI GÌ THÌ ADDON PHẢI PHẢN CHIẾU ĐÚNG CÁI ĐÓ.
+- Thứ tự/nhóm/section trên trang Cobephim phải được crawler nhận diện và đưa sang addon tương ứng, không tự nghĩ lại bố cục.
+- Tên phim, poster/backdrop, tiêu đề hiển thị, mô tả, metadata, thể loại/quốc gia/năm nếu có, phim mới/cập nhật/đề xuất và các nhóm khác phải bám dữ liệu và cách phân nhóm của Cobephim.
+- Trang chi tiết và danh sách tập phải theo dữ liệu Cobephim; tập nào có trên web thì index tập đó, giữ đúng mapping phim-tập.
+- Link playback là lớp riêng: mỗi tập resolve provider thực tế (StreamVSMov / StreamC-Cyin / provider khác), nhưng catalog/UI không được biến thành catalog tự thiết kế.
+- Khi Cobephim thay đổi nội dung/catalog, lần quét/cập nhật tiếp theo phải phản ánh thay đổi đó vào addon.
+- Đây là cùng nguyên tắc đồng bộ web -> addon đã áp dụng cho RoPhim.
