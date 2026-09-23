@@ -1,26 +1,32 @@
-# CobePhim browser-player add-on
+# CobePhim catalog + media resolver add-on
 
-This repository now contains two independent pieces:
+The add-on keeps CobePhim as a catalog/metadata layer while playback is supplied by a separately authorized standards-compatible media source.
 
-- `addon-server.mjs`: Nuvio/Stremio-compatible manifest/catalog/meta/stream bridge.
-- `scanner.mjs` and `render-scanner.mjs`: diagnostic browser scanners kept for investigation.
+## Playback contract
 
-## Why browser-player mode
+Set `MEDIA_SOURCES_JSON` on the server. Keys are add-on video IDs and values are arrays of normal HTTP HLS/DASH/MP4 sources.
 
-The September 23 investigation identified JW Player 8.51.3 + hls.js/MSE. The observed HLS response used a non-standard `#ENC-AESGCM` wrapper and the browser produced a blob-backed video. No standard HLS/DASH/MP4 URL suitable for a normal Nuvio stream recipe was demonstrated.
+Example:
 
-Therefore the add-on does not decrypt, proxy, rewrite, or bypass the provider stream. Its stream response uses `externalUrl` to open the provider-authorized episode/player page.
+```json
+{
+  "cobephim:de-che-dai-han:775372": [
+    {
+      "name": "Authorized HLS",
+      "title": "Source 1",
+      "url": "https://media.example.test/video/master.m3u8"
+    }
+  ]
+}
+```
 
-## Run
-
-`npm start`
+If no authorized source is configured, the stream endpoint deliberately returns an empty `streams` array. It never opens the CobePhim webpage.
 
 Endpoints:
-
 - `/manifest.json`
 - `/catalog/series/cobephim.json`
-- `/meta/series/cobephim%3Ade-che-dai-han%3A775372.json`
-- `/stream/series/cobephim%3Ade-che-dai-han%3A775372.json`
+- `/meta/series/:id.json`
+- `/stream/series/:id.json`
 - `/health`
 
-The current commit intentionally contains one verified sample episode. Site-wide catalog ingestion is a separate next step; it must map public CobePhim metadata to stable add-on IDs without attempting to defeat the site's playback controls.
+The diagnostic scanners remain in the repository. They are not part of playback.
