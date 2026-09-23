@@ -6,7 +6,8 @@
   "scripts": {
     "scan": "node scanner.mjs",
     "start": "npx playwright install chromium && node addon-server.mjs",
-    "scanner-server": "node render-scanner.mjs"
+    "scanner-server": "node render-scanner.mjs",
+    "scanner": "npx playwright install chromium && node render-scanner.mjs"
   },
   "dependencies": {
     "playwright": "^1.55.0"
