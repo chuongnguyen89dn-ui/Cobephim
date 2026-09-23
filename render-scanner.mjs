@@ -4,7 +4,8 @@ import { chromium } from 'playwright';
 
 const ORIGIN='https://cobephim.cfd';
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1';
-const state={status:'starting',started:new Date().toISOString(),pages:0,movies:0,catalog:[],errors:[],lastUrl:'',lastError:''};
+const state={status:'starting',started:new Date().toISOString(),pages:0,movies:0,catalog:[],media:[],errors:[],lastUrl:'',lastError:''};
+const mediaSeen=new Set();
 const map=new Map(), seen=new Set(), queued=new Set();
 const q=[ORIGIN+'/'];
 const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/?$/.test(x.pathname)?x.origin+x.pathname.replace(/\/$/,''):''}catch{return ''}};
@@ -21,12 +22,14 @@ async function run(){
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
   const ctx=await browser.newContext({userAgent:UA,viewport:{width:1280,height:900}});
   const page=await ctx.newPage();
-  page.on('request',r=>{const u=r.url();addMovie(u);});
+  const captureMedia=(kind,u)=>{try{const x=new URL(u);if(/\.m3u8(?:$|\?)/i.test(u)||/\/streamaaa\d+\.png(?:$|\?)/i.test(u)||/streamvsmov|streamc\.|cyin\d*\.|darkbytes|vsphim/i.test(x.hostname)){const k=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');if(!mediaSeen.has(k)){mediaSeen.add(k);state.media.push({kind,url:k,page:page.url(),at:new Date().toISOString()});console.log('MEDIA '+kind+' '+k)}}}catch{}};
+  page.on('request',r=>{const u=r.url();addMovie(u);captureMedia('REQ',u);});
+  page.on('response',r=>captureMedia('RES'+r.status(),r.url()));
   state.status='running';
   while(q.length){
    const url=q.shift(); if(seen.has(url))continue; seen.add(url); state.lastUrl=url;
    try{
-    await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000});
+    await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000}).catch(e=>console.log('GOTO_TIMEOUT continue '+url));
     await page.waitForTimeout(1200);
     for(let i=0;i<3;i++){await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));await page.waitForTimeout(500)}
     const data=await page.evaluate(()=>({
@@ -43,7 +46,16 @@ async function run(){
     if(here){
       const row=map.get(here); row.title=(data.title||row.title).replace(/\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;
       row.year=Number(((data.text.match(/(?:19|20)\d{2}/)||[])[0]))||null;
-      row.episodes=[...new Set([...urls].map(episodeUrl).filter(Boolean))].map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
+      const eps=[...new Set([...urls].map(episodeUrl).filter(Boolean))].filter(u=>!/\/tap-latest(?:$|[?#])/.test(u));
+      row.episodes=eps.map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
+      if(row.episodes.length){
+       for(const ep of row.episodes.slice(0,3)){
+        await page.goto(ep.url,{waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});
+        await page.waitForTimeout(900);
+        for(const fr of page.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),4);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:400})}catch{}}catch{}
+        await page.mouse.click(640,450).catch(()=>{});await page.waitForTimeout(1800);
+       }
+      }
       row.status='indexed';
     }
     state.pages++;publish();console.log('SCAN pages='+state.pages+' movies='+state.movies+' queue='+q.length+' url='+url);
