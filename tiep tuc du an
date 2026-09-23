@@ -28,3 +28,9 @@
 - Dữ liệu nên lưu theo movie -> episode -> provider -> resolver information/pattern; không lưu hàng loạt signed m3u8 hết hạn như kết quả cuối.
 - Provider chưa biết phải đánh dấu unknown để phân tích sau, không làm toàn bộ job thất bại.
 - Có thể resolve song song có giới hạn + cache/checkpoint, nhưng phải ưu tiên ổn định và không ảnh hưởng addon đang live.
+
+
+=== 23/09/2026 — BẮT ĐẦU DỰ ÁN QUÉT TOÀN SITE ===
+Mục tiêu được chốt: quét TOÀN BỘ Cobephim, không chỉ link video. Thu catalog/phim/tập, tên, poster/backdrop, metadata/mô tả, năm/thể loại và thông tin cần thiết để addon có giao diện/bố cục kiểu RoPhim; đồng thời resolve link phát cho từng tập theo 2 provider đã biết (StreamVSMov và StreamC/Cyin) và mở rộng cho provider mới.
+Kiến trúc: scanner/indexer riêng + database JSON/checkpoint riêng; addon live v0.4.9 giữ playback ổn định. Catalog scan ưu tiên HTTP/RSC/HTML nhanh; browser resolver chỉ dùng cho video/tập cần thiết. Không lưu signed URL hết hạn làm nguồn lâu dài. Scanner phải resume/checkpoint, dedupe, giới hạn concurrency, lưu trạng thái resolved/unknown/error. Mọi thay đổi addon live vẫn phải tăng version.
+Giao diện đầu ra/addon: tổ chức catalog theo phong cách RoPhim (hero/featured, phim mới cập nhật, phim bộ/phim lẻ, thể loại/quốc gia nếu dữ liệu có, poster/backdrop, trang chi tiết và tập), nhưng không sao chép tài sản thương hiệu/logo độc quyền của RoPhim.
