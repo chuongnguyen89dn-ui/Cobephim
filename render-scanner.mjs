@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 
 const ORIGIN='https://cobephim.cfd';
@@ -14,6 +15,9 @@ const publish=()=>{state.movies=map.size;state.catalog=[...map.values()]};
 async function run(){
  let browser;
  try{
+  console.log('BOOT installing Chromium');
+  execFileSync('npx',['playwright','install','chromium'],{stdio:'inherit',timeout:240000});
+  console.log('BOOT Chromium ready');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
   const ctx=await browser.newContext({userAgent:UA,viewport:{width:1280,height:900}});
   const page=await ctx.newPage();
