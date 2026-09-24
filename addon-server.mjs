@@ -43,6 +43,28 @@ async function resolveMaster(key,target=targetFor(key)){
       try{decryptedPlaylist=decodeURIComponent(escape(atob(t.slice(18))));decryptedBase=p.url();console.log('[resolver] decrypted_playlist '+key+' bytes='+decryptedPlaylist.length)}catch{}
     }
   });
+  p.on('response',async resp=>{
+    try{
+      const u=resp.url(), ct=(await resp.headerValue('content-type'))||'';
+      if(/embed\d*\.streamc\.xyz/i.test(u)&&(/\.js(?:\?|$)/i.test(u)||/javascript/i.test(ct))){
+        const txt=await resp.text().catch(()=> '');
+        if(txt){
+          const hits=[...txt.matchAll(/.{0,100}(?:ENC-AESGCM|AES-GCM|subtle|decrypt|WebAssembly|Worker|streamaaa|playlist|m3u8).{0,180}/gi)].slice(0,12).map(x=>x[0].replace(/\s+/g,' '));
+          if(hits.length)console.log('[streamc-js]',key,new URL(u).pathname,'bytes='+txt.length,JSON.stringify(hits));
+        }
+      }
+      if(/embed\d*\.streamc\.xyz/i.test(u)&&!/\.js(?:\?|$)/i.test(u)&&resp.status()===200){
+        const len=Number((await resp.headerValue('content-length'))||0), typ=ct.toLowerCase();
+        if(/mpegurl|octet-stream|text\/plain|application\/json/.test(typ)||(!typ&&len<2000000)){
+          const b=await resp.body().catch(()=>null);
+          if(b){
+            const s=b.toString('utf8');
+            if(/#EXTM3U|#ENC-AESGCM|AESGCM|streamaaa|m3u8/i.test(s))console.log('[streamc-payload]',key,u.slice(0,220),'ct='+ct,'bytes='+b.length,'head='+JSON.stringify(s.slice(0,1200)));
+          }
+        }
+      }
+    }catch(e){console.log('[probe-error]',key,e.message)}
+  });
   const note=(kind,u)=>{if(/stream|m3u8|player|embed|video|tap-/i.test(u)){seen.push(kind+': '+u);console.log('[resolver]',key,kind,u.slice(0,500))}};
   const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8')){found=u;cached.url=u;cached.at=Date.now();cached.kind='hls';console.log('[resolver] preferred_hls '+key)}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!segmentFound){segmentFound=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');console.log('[resolver] segment_fallback_seen '+key+' host='+x.hostname)}}catch{}};
   p.on('request',q=>{note('REQ',q.url());capture(q.url())}); p.on('response',r=>{note('RES '+r.status(),r.url());capture(r.url())});
@@ -79,7 +101,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.21',name:'CobePhim HLS Resolver',description:'CobePhim fresh HLS/StreamC decrypted playlist resolver.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.22',name:'CobePhim HLS Resolver',description:'CobePhim StreamC runtime probe: capture player scripts, encrypted playlists and worker/WASM paths.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
  {episode:2,title:'Tập 2',sub:'tap-775373',dub:'tap-775377'},
