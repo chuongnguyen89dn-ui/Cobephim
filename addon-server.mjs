@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 const PORT=Number(process.env.PORT||10000), BASE=(process.env.PUBLIC_BASE_URL||'https://cobephim-one-shot.onrender.com').replace(/\/$/,'');
 const ID='cobephim:de-che-dai-han:775372', NAME='Đế Chế Đại Hàn';
@@ -9,6 +10,21 @@ function cacheFor(key){if(!caches.has(key))caches.set(key,{url:'',at:0,kind:'',p
 function targetFor(id){
  const parts=id.split(':'); const slug=parts[1]||'de-che-dai-han', ep=parts.slice(2).join(':');
  return ep&&ep.startsWith('tap-') ? `https://cobephim.cfd/phim/${slug}/${ep}` : `https://cobephim.cfd/phim/${slug}`;
+}
+function decodeBootstrapPayload(obj,url){
+ try{
+  if(!obj||!obj.iv||!obj.data)return '';
+  const iv=Buffer.from(String(obj.iv),'hex');
+  const enc=Buffer.from(String(obj.data),'base64');
+  if(iv.length!==12||enc.length<17)return '';
+  const aad=Buffer.from('stream-bootstrap-v1\n'+url);
+  const key=crypto.createHash('sha256').update(aad).digest();
+  const tag=enc.subarray(enc.length-16), body=enc.subarray(0,enc.length-16);
+  const d=crypto.createDecipheriv('aes-256-gcm',key,iv);
+  d.setAAD(aad); d.setAuthTag(tag);
+  const out=Buffer.concat([d.update(body),d.final()]).toString('utf8');
+  return out;
+ }catch(e){console.log('[bootstrap-decode] fail '+e.message);return ''}
 }
 async function resolveMaster(key,target=targetFor(key)){
  const cached=cacheFor(key);
@@ -60,7 +76,23 @@ async function resolveMaster(key,target=targetFor(key)){
           const b=await resp.body().catch(()=>null);
           if(b){
             const s=b.toString('utf8');
-            if(/#EXTM3U|#ENC-AESGCM|AESGCM|streamaaa|m3u8/i.test(s))console.log('[streamc-payload]',key,u.slice(0,220),'ct='+ct,'bytes='+b.length,'head='+JSON.stringify(s.slice(0,1200)));
+            if(/#EXTM3U|#ENC-AESGCM|AESGCM|streamaaa|m3u8|aesgcm-v1/i.test(s))console.log('[streamc-payload]',key,u.slice(0,220),'ct='+ct,'bytes='+b.length,'head='+JSON.stringify(s.slice(0,500)));
+            if(/application\/json/i.test(typ)){
+              try{
+                const obj=JSON.parse(s), plain=decodeBootstrapPayload(obj,u);
+                if(plain){
+                  console.log('[bootstrap-decode] '+key+' bytes='+plain.length+' head='+JSON.stringify(plain.slice(0,300)));
+                  if(plain.includes('#EXTM3U')){decryptedPlaylist=plain;decryptedBase=u}
+                  else{
+                    try{
+                      const j=JSON.parse(plain);
+                      const pl=j.playlist||j.url||j.src||'';
+                      if(typeof pl==='string'&&pl){found=pl;cached.url=pl;cached.at=Date.now();cached.kind=/\.m3u8(?:\?|$)/i.test(pl)?'hls':'hls';console.log('[bootstrap-decode] media '+key+' '+pl.slice(0,220))}
+                    }catch{}
+                  }
+                }
+              }catch{}
+            }
           }
         }
       }
@@ -102,7 +134,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.23',name:'CobePhim HLS Resolver',description:'CobePhim StreamC decrypted-playlist cache with retry-safe resolving.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.24',name:'CobePhim HLS Resolver',description:'CobePhim direct AES-GCM bootstrap decoder with browser fallback.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
  {episode:2,title:'Tập 2',sub:'tap-775373',dub:'tap-775377'},
