@@ -4,6 +4,7 @@ const PORT=Number(process.env.PORT||10000), BASE=(process.env.PUBLIC_BASE_URL||'
 const ID='cobephim:de-che-dai-han:775372', NAME='Đế Chế Đại Hàn';
 const TARGET='https://cobephim.cfd/phim/de-che-dai-han';
 const caches=new Map(), warmings=new Map();
+const HLS_FRESH_MS=20*60*1000, PREWARM_MS=15*60*1000;
 function cacheFor(key){if(!caches.has(key))caches.set(key,{url:'',at:0,kind:''});return caches.get(key)}
 function targetFor(id){
  const parts=id.split(':'); const slug=parts[1]||'de-che-dai-han', ep=parts.slice(2).join(':');
@@ -11,12 +12,13 @@ function targetFor(id){
 }
 async function resolveMaster(key,target=targetFor(key)){
  const cached=cacheFor(key);
- if(cached.url && cached.kind==='hls' && Date.now()-cached.at<5*60*1000)return cached.url;
+ if(cached.url && cached.kind==='hls' && Date.now()-cached.at<HLS_FRESH_MS)return cached.url;
  if(cached.kind==='segments'){cached.url='';cached.at=0;cached.kind=''}
  let browser;
  try{
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-blink-features=AutomationControlled','--autoplay-policy=no-user-gesture-required']});
   const cx=await browser.newContext({userAgent:hdr()['user-agent'],viewport:{width:390,height:844},locale:'vi-VN'});
+  await cx.route('**/*',route=>{const u=route.request().url();if(/jwpltx\.com|whos\.amung\.us|google-analytics|googletagmanager|doubleclick|facebook\.com\/tr/i.test(u))return route.abort();return route.continue()});
   const p=await cx.newPage(); let found=''; const seen=[];
   const note=(kind,u)=>{if(/stream|m3u8|player|embed|video|tap-/i.test(u)){seen.push(kind+': '+u);console.log('[resolver]',key,kind,u.slice(0,500))}};
   const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8')){found=u;cached.kind='hls'}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&(x.hostname.includes('cyin')||x.hostname.includes('streamc')||x.hostname.includes('amass11'))){if(!cached.url){cached.url=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');cached.at=Date.now();cached.kind='segments';found=cached.url;console.log('[resolver] segment_pattern_found '+key+' host='+x.hostname)}}}catch{}};
@@ -42,7 +44,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.14',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.15',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const item=()=>({id:ID,type:'series',name:NAME,description:'CobePhim playback test'});
 const SCANNER=(process.env.SCANNER_URL||'https://cobephim-full-scan.onrender.com').replace(/\/$/,'');
 let liveCatalog={at:0,metas:[],rows:[]};
@@ -70,7 +72,7 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname==='/manifest.json')return send(r,200,manifest);
  if(u.pathname==='/catalog/series/cobephim.json'){const lc=await pullCatalog();return send(r,200,{metas:lc.metas.length?lc.metas:[item()]})}
  const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid===ID)return send(r,200,{meta:{...item(),videos:[{id:ID,title:'Tập thử'}]}});const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
- const s=u.pathname.match(/^\/stream\/series\/(.+)\.json$/);if(s){const id=decodeURIComponent(s[1]);const old=cacheFor(id);old.url='';old.at=0;old.kind='';warm(id);return send(r,200,{streams:[{name:'CobePhim',title:'CobePhim fresh resolver',url:BASE+'/resolve/'+encodeURIComponent(id)+'.m3u8'}]})}
+ const s=u.pathname.match(/^\/stream\/series\/(.+)\.json$/);if(s){const id=decodeURIComponent(s[1]);const old=cacheFor(id);if(!old.url||Date.now()-old.at>=HLS_FRESH_MS)warm(id);return send(r,200,{streams:[{name:'CobePhim',title:old.url?'CobePhim cached fast start':'CobePhim resolver',url:BASE+'/resolve/'+encodeURIComponent(id)+'.m3u8'}]})}
  if(u.pathname.startsWith('/resolve/')){
    const id=decodeURIComponent(u.pathname.slice('/resolve/'.length).replace(/\.m3u8$/,''));
    const cached=cacheFor(id);
@@ -85,4 +87,6 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname==='/proxy/segment'){const up=u.searchParams.get('url');if(!up)return send(r,400,{error:'missing_url'});try{const z=await fetchUp(up);return await streamSegment(z,r)}catch(e){if([401,403,404].includes(e.status)){invalidateByUrl(up);console.error('[segment] dead upstream '+e.status+' '+up)}throw e}}
  return send(r,404,{error:'not_found'});
 }catch(e){console.error('[route]',q.url,e?.stack||e);return send(r,502,{error:'proxy_failed',message:e.message})}}
+function prewarm(){for(const [key,v] of caches)if(v.url&&v.kind==='hls'&&Date.now()-v.at>=PREWARM_MS)warm(key)}
+setInterval(prewarm,60*1000).unref();
 http.createServer(route).listen(PORT,'0.0.0.0',()=>{console.log('CobePhim',manifest.version,PORT);warm(ID)});
