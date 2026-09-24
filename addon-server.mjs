@@ -13,7 +13,8 @@ function targetFor(id){
 async function resolveMaster(key,target=targetFor(key)){
  const cached=cacheFor(key);
  if(cached.url && cached.kind==='hls' && Date.now()-cached.at<HLS_FRESH_MS)return cached.url;
- if(cached.kind==='segments'){cached.url='';cached.at=0;cached.kind=''}
+ if(cached.url && cached.kind==='segments' && Date.now()-cached.at<10*60*1000)return cached.url;
+ if(cached.kind==='segments' && Date.now()-cached.at>=10*60*1000){cached.url='';cached.at=0;cached.kind=''}
  let browser;
  try{
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-blink-features=AutomationControlled','--autoplay-policy=no-user-gesture-required']});
@@ -44,7 +45,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.17',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.18',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {id:'tap-775372',title:'Tập 1 • Phụ đề #1',src:'https://seouls11.amass11.top/254565070f42e77cc7912d915820b662/streamaaa{n}.png'},
  {id:'tap-775373',title:'Tập 2 • Phụ đề #1',src:'https://cyin1.sbs/7a18bffd97d671647a1e173527959f48/streamaaa{n}.png'},
@@ -60,7 +61,6 @@ const TEST_EPISODES=[
  {id:'tap-780555',title:'Tập 5B • Thuyết Minh #1',src:'https://seouls11.amass11.top/dfdd6daf0be4a469319055efa22b0e0e/streamaaa{n}.png'},
  {id:'tap-780575',title:'Tập 6 • Thuyết Minh #1',src:'https://seouls11.amass11.top/963c1a9d03912bb0da78800ea47e25b9/streamaaa{n}.png'}
 ];
-for(const e of TEST_EPISODES){const k='cobephim:de-che-dai-han:'+e.id;caches.set(k,{url:e.src,at:Date.now(),kind:'segments'})}
 const TEST_INFO={
  name:'Đế Chế Đại Hàn',
  altName:'메이드 인 코리아',
@@ -79,6 +79,18 @@ const TEST_INFO={
 const item=(extra={})=>({id:'cobephim:de-che-dai-han',type:'series',name:TEST_INFO.name,description:TEST_INFO.description,releaseInfo:TEST_INFO.releaseInfo,runtime:TEST_INFO.runtime,country:TEST_INFO.country,genres:TEST_INFO.genres,cast:TEST_INFO.cast,imdbRating:TEST_INFO.imdbRating,...extra});
 const SCANNER=(process.env.SCANNER_URL||'https://cobephim-full-scan.onrender.com').replace(/\/$/,'');
 let liveCatalog={at:0,metas:[],rows:[]};
+let pageArt={at:0,poster:'',background:''};
+async function pullPageArt(){
+ try{
+  if(Date.now()-pageArt.at<30*60*1000&&(pageArt.poster||pageArt.background))return pageArt;
+  const z=await fetch(TARGET,{headers:hdr(),redirect:'follow'}); if(!z.ok)throw Error('page '+z.status);
+  const h=await z.text();
+  const pick=(prop)=>{const m=h.match(new RegExp('<meta[^>]+(?:property|name)=["\\']'+prop+'["\\'][^>]+content=["\\']([^"\\']+)', 'i'))||h.match(new RegExp('<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+(?:property|name)=["\\']'+prop+'["\\']','i'));return m?.[1]?.replace(/&amp;/g,'&')||''};
+  const poster=pick('og:image')||pick('twitter:image');
+  pageArt={at:Date.now(),poster,background:poster}; console.log('[art] poster='+(poster||'none')); return pageArt;
+ }catch(e){console.error('[art]',e.message);return pageArt}
+}
+
 async function pullCatalog(){try{if(Date.now()-liveCatalog.at<15000&&liveCatalog.metas.length)return liveCatalog;const z=await fetch(SCANNER+'/',{headers:{'user-agent':hdr()['user-agent']}});if(!z.ok)throw Error('scanner '+z.status);const d=await z.json(),rows=Array.isArray(d.catalog)?d.catalog:[];const metas=rows.filter(x=>x.title).map(x=>({id:'cobephim:'+x.slug,type:'series',name:x.title,poster:x.poster||undefined,description:x.description||undefined,releaseInfo:x.year?String(x.year):undefined}));liveCatalog={at:Date.now(),metas,rows};console.log('[catalog] live movies='+metas.length+' scannerStatus='+d.status);return liveCatalog}catch(e){console.error('[catalog]',e.message);return liveCatalog}}
 function send(r,s,o){const b=JSON.stringify(o);r.writeHead(s,{'content-type':'application/json; charset=utf-8','access-control-allow-origin':'*','cache-control':'no-store'});r.end(b)}
 function hdr(){return {'user-agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1','referer':'https://cobephim.cfd/','origin':'https://cobephim.cfd'}}
@@ -101,8 +113,8 @@ async function streamSegment(z,r){
 async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname==='/'||u.pathname==='/health')return send(r,200,{ok:true,version:manifest.version,manifest:BASE+'/manifest.json',testStream:BASE+'/stream/series/'+encodeURIComponent(ID)+'.json'});
  if(u.pathname==='/manifest.json')return send(r,200,manifest);
- if(u.pathname==='/catalog/series/cobephim.json'){const lc=await pullCatalog();const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};const test=item({poster:live.poster||undefined,background:live.background||live.backdrop||undefined});const metas=[test,...lc.metas.filter(x=>x.id!==test.id)];return send(r,200,{metas})}
- const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid==='cobephim:de-che-dai-han'||mid===ID){const lc=await pullCatalog();const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};return send(r,200,{meta:{...item({poster:live.poster||undefined,background:live.background||live.backdrop||undefined}),videos:TEST_EPISODES.map((e,i)=>({id:'cobephim:de-che-dai-han:'+e.id,title:e.title,season:2,episode:i+1}))}})}const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
+ if(u.pathname==='/catalog/series/cobephim.json'){const [lc,art]=await Promise.all([pullCatalog(),pullPageArt()]);const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};const test=item({poster:live.poster||art.poster||undefined,background:live.background||live.backdrop||art.background||undefined});const metas=[test,...lc.metas.filter(x=>x.id!==test.id)];return send(r,200,{metas})}
+ const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid==='cobephim:de-che-dai-han'||mid===ID){const [lc,art]=await Promise.all([pullCatalog(),pullPageArt()]);const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};return send(r,200,{meta:{...item({poster:live.poster||art.poster||undefined,background:live.background||live.backdrop||art.background||undefined}),videos:TEST_EPISODES.map((e,i)=>({id:'cobephim:de-che-dai-han:'+e.id,title:e.title,season:2,episode:i+1}))}})}const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
  const s=u.pathname.match(/^\/stream\/series\/(.+)\.json$/);if(s){const id=decodeURIComponent(s[1]);const old=cacheFor(id);if(!old.url||Date.now()-old.at>=HLS_FRESH_MS)warm(id);return send(r,200,{streams:[{name:'CobePhim',title:old.url?'CobePhim cached fast start':'CobePhim resolver',url:BASE+'/resolve/'+encodeURIComponent(id)+'.m3u8'}]})}
  if(u.pathname.startsWith('/resolve/')){
    const id=decodeURIComponent(u.pathname.slice('/resolve/'.length).replace(/\.m3u8$/,''));
@@ -115,7 +127,7 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
    r.writeHead(200,{'content-type':'application/vnd.apple.mpegurl','access-control-allow-origin':'*','cache-control':'no-store'});return r.end(body)
  }
  if(u.pathname==='/proxy/playlist'){const up=u.searchParams.get('url');if(!up)return send(r,400,{error:'missing_url'});const z=await fetchUp(up);let body=await z.text();body=body.split(/\r?\n/).map(x=>{const t=x.trim();if(!t||t[0]==='#')return x;try{return p('segment',new URL(t,up).href)}catch{return x}}).join('\n');r.writeHead(200,{'content-type':'application/vnd.apple.mpegurl','access-control-allow-origin':'*','cache-control':'no-store'});return r.end(body)}
- if(u.pathname==='/proxy/segment'){const up=u.searchParams.get('url');if(!up)return send(r,400,{error:'missing_url'});try{const z=await fetchUp(up);return await streamSegment(z,r)}catch(e){if([401,403,404].includes(e.status)){invalidateByUrl(up);console.error('[segment] dead upstream '+e.status+' '+up)}throw e}}
+ if(u.pathname==='/proxy/segment'){const up=u.searchParams.get('url');if(!up)return send(r,400,{error:'missing_url'});try{const z=await fetchUp(up);return await streamSegment(z,r)}catch(e){if([401,403,404].includes(e.status)){let deadKey='';for(const [k,v] of caches)if(v.url&&v.kind==='segments'&&up.startsWith(v.url.split('{n}')[0]))deadKey=k;invalidateByUrl(up);console.error('[segment] dead upstream '+e.status+' '+up);if(deadKey)warm(deadKey)}throw e}}
  return send(r,404,{error:'not_found'});
 }catch(e){console.error('[route]',q.url,e?.stack||e);return send(r,502,{error:'proxy_failed',message:e.message})}}
 function prewarm(){for(const [key,v] of caches)if(v.url&&v.kind==='hls'&&Date.now()-v.at>=PREWARM_MS)warm(key)}
