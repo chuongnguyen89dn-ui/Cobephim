@@ -45,7 +45,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.18',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.19',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {id:'tap-775372',title:'Tập 1 • Phụ đề #1',src:'https://seouls11.amass11.top/254565070f42e77cc7912d915820b662/streamaaa{n}.png'},
  {id:'tap-775373',title:'Tập 2 • Phụ đề #1',src:'https://cyin1.sbs/7a18bffd97d671647a1e173527959f48/streamaaa{n}.png'},
@@ -85,7 +85,7 @@ async function pullPageArt(){
   if(Date.now()-pageArt.at<30*60*1000&&(pageArt.poster||pageArt.background))return pageArt;
   const z=await fetch(TARGET,{headers:hdr(),redirect:'follow'}); if(!z.ok)throw Error('page '+z.status);
   const h=await z.text();
-  const pick=(prop)=>{const m=h.match(new RegExp('<meta[^>]+(?:property|name)=["\\']'+prop+'["\\'][^>]+content=["\\']([^"\\']+)', 'i'))||h.match(new RegExp('<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+(?:property|name)=["\\']'+prop+'["\\']','i'));return m?.[1]?.replace(/&amp;/g,'&')||''};
+  const pick=(prop)=>{for(const tag of (h.match(/<meta\b[^>]*>/gi)||[])){if(!tag.toLowerCase().includes(prop.toLowerCase()))continue;const m=tag.match(/content=(?:"([^"]+)"|'([^']+)')/i);if(m)return (m[1]||m[2]||'').replace(/&amp;/g,'&')}return ''};
   const poster=pick('og:image')||pick('twitter:image');
   pageArt={at:Date.now(),poster,background:poster}; console.log('[art] poster='+(poster||'none')); return pageArt;
  }catch(e){console.error('[art]',e.message);return pageArt}
