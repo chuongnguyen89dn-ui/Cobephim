@@ -99,8 +99,8 @@ async function resolveMaster(key,target=targetFor(key)){
     }catch(e){console.log('[probe-error]',key,e.message)}
   });
   const note=(kind,u)=>{if(/stream|m3u8|player|embed|video|tap-/i.test(u)){seen.push(kind+': '+u);console.log('[resolver]',key,kind,u.slice(0,500))}};
-  const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8')){found=u;cached.url=u;cached.at=Date.now();cached.kind='hls';console.log('[resolver] preferred_hls '+key)}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!segmentFound){segmentFound=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');console.log('[resolver] segment_fallback_seen '+key+' host='+x.hostname)}}catch{}};
-  p.on('request',q=>{note('REQ',q.url());capture(q.url())}); p.on('response',r=>{note('RES '+r.status(),r.url());if(r.status()===200){try{const x=new URL(r.url());if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!found){segmentFound=r.url().replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');cached.url=segmentFound;cached.at=Date.now();cached.kind='segments';found=segmentFound;console.log('[resolver] segment_200_fast_lock '+key+' host='+x.hostname)}}catch{}}capture(r.url())});
+  const capture=u=>{try{const x=new URL(u);if((/streamvsmov\.com|streamvsphim\.top|vsphim\.com/i.test(x.hostname)&&/\.m3u8(?:$|\?)/i.test(x.href))||(/\.m3u8(?:$|\?)/i.test(x.href)&&key.endsWith('tap-770232'))){found=u;cached.url=u;cached.at=Date.now();cached.kind='hls';console.log('[resolver] legacy_hls_lock '+key+' '+u.slice(0,260))}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!segmentFound){segmentFound=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');console.log('[resolver] segment_fallback_seen '+key+' host='+x.hostname)}}catch{}};
+  p.on('request',q=>{const u=q.url();note('REQ',u);if(key.endsWith('tap-770232')&&/darkbytes|m3u8|\.mp4(?:$|\?)|stream|playlist|manifest/i.test(u))console.log('[legacy-probe] REQ '+u.slice(0,700));capture(u)}); p.on('response',r=>{const ru=r.url();note('RES '+r.status(),ru);if(key.endsWith('tap-770232')&&/darkbytes|m3u8|\.mp4(?:$|\?)|stream|playlist|manifest/i.test(ru))console.log('[legacy-probe] RES '+r.status()+' '+ru.slice(0,700));if(r.status()===200){try{const x=new URL(r.url());if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!found){segmentFound=r.url().replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');cached.url=segmentFound;cached.at=Date.now();cached.kind='segments';found=segmentFound;console.log('[resolver] segment_200_fast_lock '+key+' host='+x.hostname)}}catch{}}capture(r.url())});
   p.on('framenavigated',fr=>note('FRAME',fr.url()));
   await p.goto(target,{waitUntil:'domcontentloaded',timeout:60000}).catch(e=>console.log('[resolver] goto timeout '+key+' '+e.message));
   await p.waitForTimeout(1800);
@@ -134,7 +134,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.27',name:'CobePhim HLS Resolver',description:'CobePhim prefers directly playable StreamVSMov HLS and keeps StreamC only as fallback.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.28',name:'CobePhim HLS Resolver',description:'CobePhim probes the legacy darkbytes/JWPlayer path and captures its real HLS media requests.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const EXTRA_EPISODES=[{episode:101,title:'Tập 01',sub:'tap-770232',dub:''}];
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
