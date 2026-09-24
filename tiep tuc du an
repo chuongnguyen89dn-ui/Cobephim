@@ -44,3 +44,12 @@ Cụm “như RoPhim” KHÔNG có nghĩa là thiết kế Cobephim theo giao di
 - Link playback là lớp riêng: mỗi tập resolve provider thực tế (StreamVSMov / StreamC-Cyin / provider khác), nhưng catalog/UI không được biến thành catalog tự thiết kế.
 - Khi Cobephim thay đổi nội dung/catalog, lần quét/cập nhật tiếp theo phải phản ánh thay đổi đó vào addon.
 - Đây là cùng nguyên tắc đồng bộ web -> addon đã áp dụng cho RoPhim.
+
+
+=== 24/09/2026 — TỐI ƯU THỜI GIAN BẮT ĐẦU PHÁT v0.4.12 ===
+- Xác định addon Test đang proxy từng fake-PNG segment qua Render; code cũ dùng await arrayBuffer() nên phải tải XONG toàn bộ segment upstream rồi mới trả byte đầu tiên cho Nuvio.
+- v0.4.12 đổi proxy segment sang streaming: chỉ giữ phần đầu đủ để tìm MPEG-TS sync byte, sau đó trả dữ liệu ngay cho Nuvio và tiếp tục pipe các chunk còn lại. Mục tiêu giảm startup latency/buffer mà không đổi cơ chế playback đã xác nhận.
+- Giữ Referer/User-Agent proxy hiện tại và giữ HLS normalization.
+- Resolver StreamC/Cyin mở rộng nhận host amass11 vì capture thực tế 24/09/2026 cho episode 770232 dùng seouls11.amass11.top.
+- Không thay catalog/scanner trong thay đổi này.
+- Commit code: 7cf6cb62e8efa0b9554eaa5a6d4db8b3a47451c3.
