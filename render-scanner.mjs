@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 
 const ORIGIN='https://cobephim.cfd';
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1';
-const state={status:'starting',started:new Date().toISOString(),pages:0,movies:0,catalog:[],media:[],errors:[],lastUrl:'',lastError:''};
+const state={status:'starting',mode:'bulk-api',started:new Date().toISOString(),pages:0,movies:0,catalog:[],media:[],errors:[],lastUrl:'',lastError:'',apiResponses:0,episodeApi:0};
 const mediaSeen=new Set();
 const map=new Map(), seen=new Set(), queued=new Set();
 const q=[ORIGIN+'/'];
@@ -26,8 +26,28 @@ async function run(){
    ctx=await browser.newContext({userAgent:UA,viewport:{width:1280,height:900}});
    page=await ctx.newPage();
    page.on('request',r=>{const u=r.url();addMovie(u);captureMedia('REQ',u);});
-   page.on('response',r=>captureMedia('RES'+r.status(),r.url()));
+   page.on('response',async r=>{captureMedia('RES'+r.status(),r.url());try{if(new URL(r.url()).hostname===APIHOST&&r.url().includes('/api/v1/')){const j=await r.json();walk(j);state.apiResponses++;console.log('API '+r.url())}}catch{}});
    return page;
+  };
+  const APIHOST='egluy2hhb21vaw5ndw9pbmhl.darkbytes.xyz';
+  const movieIds=new Set();
+  const walk=(v)=>{
+   if(!v||typeof v!=='object')return;
+   if(Array.isArray(v)){for(const x of v)walk(x);return}
+   const id=v.idMovie??v.movieId??v.movie_id??((v.slug||v.name||v.title)&&v.id);
+   if(id!=null&&/^\d+$/.test(String(id))) movieIds.add(String(id));
+   for(const x of Object.values(v))walk(x);
+  };
+  const bulkEpisodes=async()=>{
+   const ids=[...movieIds]; let n=0;
+   console.log('BULK episode IDs='+ids.length);
+   const workers=Array.from({length:12},async()=>{
+    while(n<ids.length){const id=ids[n++];try{
+     const r=await ctx.request.get('https://'+APIHOST+'/api/v1/episodes/by-idMovie/'+id,{timeout:8000});
+     if(r.ok()){const j=await r.json();walk(j);state.episodeApi++;state.media.push({kind:'EPISODE_API',movieId:id,data:j,at:new Date().toISOString()});}
+    }catch(e){state.errors.push('EPAPI '+id+' '+e)}
+   }});
+   await Promise.all(workers);console.log('BULK episodes done='+state.episodeApi);
   };
   const captureMedia=(kind,u)=>{try{const x=new URL(u);if(/\.m3u8(?:$|\?)/i.test(u)||/\/streamaaa\d+\.png(?:$|\?)/i.test(u)||/streamvsmov|streamc\.|cyin\d*\.|darkbytes|vsphim/i.test(x.hostname)){const k=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');if(!mediaSeen.has(k)){mediaSeen.add(k);state.media.push({kind,url:k,page:page.url(),at:new Date().toISOString()});console.log('MEDIA '+kind+' '+k)}}}catch{}};
   await openPage();
@@ -51,13 +71,18 @@ async function run(){
     const urls=new Set(data.hrefs);
     for(const m of data.text.matchAll(/(?:https?:\\?\/\\?\/[^"'<>\\s]+|\\?\/phim\\?\/[^"'<>\\s]+)/g))try{urls.add(new URL(m[0].replace(/\\\//g,'/'),ORIGIN).href)}catch{}
     for(const u of urls){addMovie(u)}
+    if(url===ORIGIN+'/'){
+      await page.waitForTimeout(2500);
+      console.log('BULK discovered movieIds='+movieIds.size+' apiResponses='+state.apiResponses);
+      await bulkEpisodes();
+    }
     const here=movieUrl(url);
     if(here){
       const row=map.get(here); row.title=(data.title||row.title).replace(/\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;
       row.year=Number(((data.text.match(/(?:19|20)\d{2}/)||[])[0]))||null;
       const eps=[...new Set([...urls].map(episodeUrl).filter(Boolean))].filter(u=>!/\/tap-latest(?:$|[?#])/.test(u));
       row.episodes=eps.map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
-      if(row.episodes.length){
+      if(false&&row.episodes.length){
        for(const ep of row.episodes){
         await page.goto(ep.url,{waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});
         await page.waitForTimeout(700);
