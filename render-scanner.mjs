@@ -4,13 +4,16 @@ import { chromium } from 'playwright';
 
 const ORIGIN='https://cobephim.cfd';
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1';
-const state={status:'starting',mode:'bulk-api',started:new Date().toISOString(),pages:0,movies:0,catalog:[],media:[],errors:[],lastUrl:'',lastError:'',apiResponses:0,episodeApi:0};
+const state={status:'starting',mode:'sitemap+bulk-api',started:new Date().toISOString(),pages:0,movies:0,catalog:[],media:[],errors:[],lastUrl:'',lastError:'',apiResponses:0,episodeApi:0};
 const mediaSeen=new Set();
 const map=new Map(), seen=new Set(), queued=new Set();
-const q=[ORIGIN+'/'];
+const q=[ORIGIN+'/',ORIGIN+'/phim-bo',ORIGIN+'/phim-le'];
 const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/?$/.test(x.pathname)?x.origin+x.pathname.replace(/\/$/,''):''}catch{return ''}};
 const episodeUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/tap-[^/?#]+/.test(x.pathname)?x.origin+x.pathname:''}catch{return ''}};
 const addMovie=u=>{const m=movieUrl(u);if(!m)return; if(!map.has(m)){const slug=new URL(m).pathname.split('/').pop();map.set(m,{url:m,slug,title:slug.replace(/-/g,' '),poster:'',description:'',year:null,episodes:[],status:'discovered'});q.push(m)}};
+const navSeen=new Set();
+const navUrl=u=>{try{const x=new URL(u,ORIGIN);if(x.origin!==ORIGIN)return '';return /^\/(?:the-loai|quoc-gia|phim-bo|phim-le|nam|studio|dao-dien)(?:\/|$)/.test(x.pathname)?x.href:''}catch{return ''}};
+const addNav=u=>{const n=navUrl(u);if(n&&!seen.has(n)&&!navSeen.has(n)){navSeen.add(n);q.push(n)}};
 const publish=()=>{state.movies=map.size;state.catalog=[...map.values()]};
 
 async function run(){
@@ -70,7 +73,7 @@ async function run(){
     }));
     const urls=new Set(data.hrefs);
     for(const m of data.text.matchAll(/(?:https?:\\?\/\\?\/[^"'<>\\s]+|\\?\/phim\\?\/[^"'<>\\s]+)/g))try{urls.add(new URL(m[0].replace(/\\\//g,'/'),ORIGIN).href)}catch{}
-    for(const u of urls){addMovie(u)}
+    for(const u of urls){addMovie(u);addNav(u)}
     if(url===ORIGIN+'/'){
       await page.waitForTimeout(2500);
       console.log('BULK discovered movieIds='+movieIds.size+' apiResponses='+state.apiResponses);
