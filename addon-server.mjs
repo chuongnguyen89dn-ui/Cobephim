@@ -100,7 +100,7 @@ async function resolveMaster(key,target=targetFor(key)){
   });
   const note=(kind,u)=>{if(/stream|m3u8|player|embed|video|tap-/i.test(u)){seen.push(kind+': '+u);console.log('[resolver]',key,kind,u.slice(0,500))}};
   const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8')){found=u;cached.url=u;cached.at=Date.now();cached.kind='hls';console.log('[resolver] preferred_hls '+key)}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!segmentFound){segmentFound=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');console.log('[resolver] segment_fallback_seen '+key+' host='+x.hostname)}}catch{}};
-  p.on('request',q=>{note('REQ',q.url());capture(q.url())}); p.on('response',r=>{note('RES '+r.status(),r.url());capture(r.url())});
+  p.on('request',q=>{note('REQ',q.url());capture(q.url())}); p.on('response',r=>{note('RES '+r.status(),r.url());if(r.status()===200){try{const x=new URL(r.url());if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!found){segmentFound=r.url().replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');cached.url=segmentFound;cached.at=Date.now();cached.kind='segments';found=segmentFound;console.log('[resolver] segment_200_fast_lock '+key+' host='+x.hostname)}}catch{}}capture(r.url())});
   p.on('framenavigated',fr=>note('FRAME',fr.url()));
   await p.goto(target,{waitUntil:'domcontentloaded',timeout:60000}).catch(e=>console.log('[resolver] goto timeout '+key+' '+e.message));
   await p.waitForTimeout(1800);
@@ -108,9 +108,9 @@ async function resolveMaster(key,target=targetFor(key)){
    let episode=''; for(const fr of p.frames())try{episode=await fr.locator('a[href*="/tap-"]').evaluateAll(as=>as.map(a=>a.href).find(Boolean)||'');if(episode)break}catch{}
    if(episode){console.log('[resolver] episode_found '+episode);await p.goto(episode,{waitUntil:'domcontentloaded',timeout:60000}).catch(()=>{});await p.waitForTimeout(1200)}
   }
-  for(let round=0;round<8&&!found;round++){
+  for(let round=0;round<8&&!found&&!segmentFound;round++){
    for(const fr of p.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),8);for(let i=0;i<n&&!found;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:800})}catch{}}catch{}
-   await p.mouse.click(195,420).catch(()=>{});await p.waitForTimeout(2200);
+   await p.mouse.click(195,420).catch(()=>{});for(let i=0;i<11&&!found&&!segmentFound;i++)await p.waitForTimeout(200);
    if(!decryptedPlaylist){
      for(const fr of p.frames())try{
        const d=await fr.evaluate(()=>globalThis.__STREAMC_DECRYPTED||null);
@@ -134,7 +134,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.25',name:'CobePhim HLS Resolver',description:'CobePhim refreshes StreamC media through a fresh player session when CDN URLs expire.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.26',name:'CobePhim HLS Resolver',description:'CobePhim fast StreamC resolve: first successful media segment immediately becomes the playable source.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
  {episode:2,title:'Tập 2',sub:'tap-775373',dub:'tap-775377'},
@@ -204,7 +204,7 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
    const cached=cacheFor(id);
    if(!cached.url){
      const job=warm(id);
-     await Promise.race([job,new Promise(resolve=>setTimeout(resolve,70000))]);
+     await Promise.race([job,new Promise(resolve=>setTimeout(resolve,25000))]);
    }
    if(!cached.url){
      console.log('[resolve] first attempt missed '+id+'; retrying once');
