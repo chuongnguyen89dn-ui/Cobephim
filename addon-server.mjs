@@ -13,6 +13,7 @@ function targetFor(id){
 async function resolveMaster(key,target=targetFor(key)){
  const cached=cacheFor(key);
  if(cached.url && cached.kind==='hls' && Date.now()-cached.at<HLS_FRESH_MS)return cached.url;
+ if(cached.url && cached.kind==='decrypted' && cached.playlist && Date.now()-cached.at<20*60*1000)return cached.url;
  if(cached.url && cached.kind==='segments' && Date.now()-cached.at<10*60*1000)return cached.url;
  if(cached.kind==='segments' && Date.now()-cached.at>=10*60*1000){cached.url='';cached.at=0;cached.kind=''}
  let browser;
@@ -75,9 +76,9 @@ async function resolveMaster(key,target=targetFor(key)){
    let episode=''; for(const fr of p.frames())try{episode=await fr.locator('a[href*="/tap-"]').evaluateAll(as=>as.map(a=>a.href).find(Boolean)||'');if(episode)break}catch{}
    if(episode){console.log('[resolver] episode_found '+episode);await p.goto(episode,{waitUntil:'domcontentloaded',timeout:60000}).catch(()=>{});await p.waitForTimeout(1200)}
   }
-  for(let round=0;round<4&&!found;round++){
+  for(let round=0;round<8&&!found;round++){
    for(const fr of p.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),8);for(let i=0;i<n&&!found;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:800})}catch{}}catch{}
-   await p.mouse.click(195,420).catch(()=>{});await p.waitForTimeout(1200);
+   await p.mouse.click(195,420).catch(()=>{});await p.waitForTimeout(2200);
    if(!decryptedPlaylist){
      for(const fr of p.frames())try{
        const d=await fr.evaluate(()=>globalThis.__STREAMC_DECRYPTED||null);
@@ -101,7 +102,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.22',name:'CobePhim HLS Resolver',description:'CobePhim StreamC runtime probe: capture player scripts, encrypted playlists and worker/WASM paths.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.23',name:'CobePhim HLS Resolver',description:'CobePhim StreamC decrypted-playlist cache with retry-safe resolving.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
  {episode:2,title:'Tập 2',sub:'tap-775373',dub:'tap-775377'},
@@ -169,7 +170,14 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname.startsWith('/resolve/')){
    const id=decodeURIComponent(u.pathname.slice('/resolve/'.length).replace(/\.m3u8$/,''));
    const cached=cacheFor(id);
-   if(!cached.url){const job=warm(id);await Promise.race([job,new Promise((_,rej)=>setTimeout(()=>rej(Error('warming_timeout')),45000))])}
+   if(!cached.url){
+     const job=warm(id);
+     await Promise.race([job,new Promise(resolve=>setTimeout(resolve,70000))]);
+   }
+   if(!cached.url){
+     console.log('[resolve] first attempt missed '+id+'; retrying once');
+     await warm(id);
+   }
    if(!cached.url)throw Error('master_not_ready');
    if(cached.kind==='decrypted'&&cached.playlist){
      const base=cached.playlistBase||targetFor(id);
@@ -189,6 +197,6 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname==='/proxy/segment'){const up=u.searchParams.get('url');if(!up)return send(r,400,{error:'missing_url'});try{const z=await fetchUp(up);return await streamSegment(z,r)}catch(e){if([401,403,404].includes(e.status)){let deadKey='';for(const [k,v] of caches)if(v.url&&v.kind==='segments'&&up.startsWith(v.url.split('{n}')[0]))deadKey=k;invalidateByUrl(up);console.error('[segment] dead upstream '+e.status+' '+up);if(deadKey)warm(deadKey)}throw e}}
  return send(r,404,{error:'not_found'});
 }catch(e){console.error('[route]',q.url,e?.stack||e);return send(r,502,{error:'proxy_failed',message:e.message})}}
-function prewarm(){for(const [key,v] of caches)if(v.url&&v.kind==='hls'&&Date.now()-v.at>=PREWARM_MS)warm(key)}
+function prewarm(){for(const [key,v] of caches)if(v.url&&(v.kind==='hls'||v.kind==='decrypted')&&Date.now()-v.at>=PREWARM_MS)warm(key)}
 setInterval(prewarm,60*1000).unref();
-http.createServer(route).listen(PORT,'0.0.0.0',()=>{console.log('CobePhim',manifest.version,PORT);warm('cobephim:de-che-dai-han:tap-775372')});
+http.createServer(route).listen(PORT,'0.0.0.0',()=>{console.log('CobePhim',manifest.version,PORT);warm('cobephim:de-che-dai-han:tap-775372');warm('cobephim:de-che-dai-han:tap-775376')});
