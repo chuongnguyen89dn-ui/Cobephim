@@ -20,9 +20,9 @@ async function resolveMaster(key,target=targetFor(key)){
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-blink-features=AutomationControlled','--autoplay-policy=no-user-gesture-required']});
   const cx=await browser.newContext({userAgent:hdr()['user-agent'],viewport:{width:390,height:844},locale:'vi-VN'});
   await cx.route('**/*',route=>{const u=route.request().url();if(/jwpltx\.com|whos\.amung\.us|google-analytics|googletagmanager|doubleclick|facebook\.com\/tr/i.test(u))return route.abort();return route.continue()});
-  const p=await cx.newPage(); let found=''; const seen=[];
+  const p=await cx.newPage(); let found='', segmentFound=''; const seen=[];
   const note=(kind,u)=>{if(/stream|m3u8|player|embed|video|tap-/i.test(u)){seen.push(kind+': '+u);console.log('[resolver]',key,kind,u.slice(0,500))}};
-  const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8')){found=u;cached.kind='hls'}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)){if(!cached.url){cached.url=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');cached.at=Date.now();cached.kind='segments';found=cached.url;console.log('[resolver] segment_pattern_found '+key+' host='+x.hostname)}}}catch{}};
+  const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8')){found=u;cached.url=u;cached.at=Date.now();cached.kind='hls';console.log('[resolver] preferred_hls '+key)}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!segmentFound){segmentFound=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');console.log('[resolver] segment_fallback_seen '+key+' host='+x.hostname)}}catch{}};
   p.on('request',q=>{note('REQ',q.url());capture(q.url())}); p.on('response',r=>{note('RES '+r.status(),r.url());capture(r.url())});
   p.on('framenavigated',fr=>note('FRAME',fr.url()));
   await p.goto(target,{waitUntil:'domcontentloaded',timeout:60000}).catch(e=>console.log('[resolver] goto timeout '+key+' '+e.message));
@@ -35,6 +35,7 @@ async function resolveMaster(key,target=targetFor(key)){
    for(const fr of p.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),8);for(let i=0;i<n&&!found;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:800})}catch{}}catch{}
    await p.mouse.click(195,420).catch(()=>{});await p.waitForTimeout(3000);
   }
+  if(!found&&segmentFound){found=segmentFound;cached.url=segmentFound;cached.at=Date.now();cached.kind='segments';console.log('[resolver] using_segment_fallback '+key)}
   if(!found&&!cached.url){console.error('[resolver] media_not_found '+key+' final='+p.url()+' seen='+JSON.stringify(seen.slice(-50)));throw Error('fresh_master_not_found')}
   if(found&&cached.kind==='hls'){cached.url=found;cached.at=Date.now()}
   return cached.url;
@@ -45,22 +46,16 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.19',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.20',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
- {id:'tap-775372',title:'Tập 1 • Phụ đề #1',src:'https://seouls11.amass11.top/254565070f42e77cc7912d915820b662/streamaaa{n}.png'},
- {id:'tap-775373',title:'Tập 2 • Phụ đề #1',src:'https://cyin1.sbs/7a18bffd97d671647a1e173527959f48/streamaaa{n}.png'},
- {id:'tap-775374',title:'Tập 3 • Phụ đề #1',src:'https://jps14.hihihoho4.top/e494830634c062645ab628bd617a36e9/streamaaa{n}.png'},
- {id:'tap-775375',title:'Tập 4 • Phụ đề #1',src:'https://seouls11.amass11.top/807501744fd99bd4160305de28365c4c/streamaaa{n}.png'},
- {id:'tap-780551',title:'Tập 5 • Phụ đề #1',src:'https://cyin1.sbs/5f437f3b6281e1b3b00b7ce7bae6e99b/streamaaa{n}.png'},
- {id:'tap-780574',title:'Tập 6 • Phụ đề #1',src:'https://seouls11.amass11.top/5d10d7c6ba9c257f4a919a0047830dab/streamaaa{n}.png'},
- {id:'tap-775376',title:'Tập 1 • Thuyết Minh #1',src:'https://cyin1.sbs/f2fa3bcd3ff3a02f42daa2664e4ed7ff/streamaaa{n}.png'},
- {id:'tap-775377',title:'Tập 2 • Thuyết Minh #1',src:'https://thais.hihihoho3.top/f10b7cc385143c458b1f09e640bf6957/streamaaa{n}.png'},
- {id:'tap-780552',title:'Tập 3 • Thuyết Minh #1',src:'https://jps14.hihihoho4.top/bc8079008d158584412d63a776849557/streamaaa{n}.png'},
- {id:'tap-780553',title:'Tập 4 • Thuyết Minh #1',src:'https://jps14.hihihoho4.top/78808a0447c63722104136865e1db127/streamaaa{n}.png'},
- {id:'tap-780554',title:'Tập 5A • Thuyết Minh #1',src:'https://seouls11.amass11.top/dfdd6daf0be4a469319055efa22b0e0e/streamaaa{n}.png'},
- {id:'tap-780555',title:'Tập 5B • Thuyết Minh #1',src:'https://seouls11.amass11.top/dfdd6daf0be4a469319055efa22b0e0e/streamaaa{n}.png'},
- {id:'tap-780575',title:'Tập 6 • Thuyết Minh #1',src:'https://seouls11.amass11.top/963c1a9d03912bb0da78800ea47e25b9/streamaaa{n}.png'}
+ {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
+ {episode:2,title:'Tập 2',sub:'tap-775373',dub:'tap-775377'},
+ {episode:3,title:'Tập 3',sub:'tap-775374',dub:'tap-780552'},
+ {episode:4,title:'Tập 4',sub:'tap-775375',dub:'tap-780553'},
+ {episode:5,title:'Tập 5',sub:'tap-780551',dub:'tap-780554'},
+ {episode:6,title:'Tập 6',sub:'tap-780574',dub:'tap-780575'}
 ];
+function variantKey(ep,variant){const x=TEST_EPISODES.find(e=>e.episode===ep);if(!x)return '';const tap=variant==='dub'?x.dub:x.sub;return 'cobephim:de-che-dai-han:'+tap}
 const TEST_INFO={
  name:'Đế Chế Đại Hàn',
  altName:'메이드 인 코리아',
@@ -114,8 +109,8 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname==='/'||u.pathname==='/health')return send(r,200,{ok:true,version:manifest.version,manifest:BASE+'/manifest.json',testStream:BASE+'/stream/series/'+encodeURIComponent(ID)+'.json'});
  if(u.pathname==='/manifest.json')return send(r,200,manifest);
  if(u.pathname==='/catalog/series/cobephim.json'){const [lc,art]=await Promise.all([pullCatalog(),pullPageArt()]);const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};const test=item({poster:live.poster||art.poster||undefined,background:live.background||live.backdrop||art.background||undefined});const metas=[test,...lc.metas.filter(x=>x.id!==test.id)];return send(r,200,{metas})}
- const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid==='cobephim:de-che-dai-han'||mid===ID){const [lc,art]=await Promise.all([pullCatalog(),pullPageArt()]);const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};return send(r,200,{meta:{...item({poster:live.poster||art.poster||undefined,background:live.background||live.backdrop||art.background||undefined}),videos:TEST_EPISODES.map((e,i)=>({id:'cobephim:de-che-dai-han:'+e.id,title:e.title,season:2,episode:i+1}))}})}const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
- const s=u.pathname.match(/^\/stream\/series\/(.+)\.json$/);if(s){const id=decodeURIComponent(s[1]);const old=cacheFor(id);if(!old.url||Date.now()-old.at>=HLS_FRESH_MS)warm(id);return send(r,200,{streams:[{name:'CobePhim',title:old.url?'CobePhim cached fast start':'CobePhim resolver',url:BASE+'/resolve/'+encodeURIComponent(id)+'.m3u8'}]})}
+ const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid==='cobephim:de-che-dai-han'||mid===ID){const [lc,art]=await Promise.all([pullCatalog(),pullPageArt()]);const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};return send(r,200,{meta:{...item({poster:live.poster||art.poster||undefined,background:live.background||live.backdrop||art.background||undefined}),videos:TEST_EPISODES.map(e=>({id:'cobephim:de-che-dai-han:episode-'+e.episode,title:e.title,season:2,episode:e.episode}))}})}const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
+ const s=u.pathname.match(/^\/stream\/series\/(.+)\.json$/);if(s){const id=decodeURIComponent(s[1]);const em=id.match(/^cobephim:de-che-dai-han:episode-(\d+)$/);if(em){const ep=Number(em[1]),sub=variantKey(ep,'sub'),dub=variantKey(ep,'dub');for(const k of [sub,dub]){const c=cacheFor(k);if(!c.url||Date.now()-c.at>=HLS_FRESH_MS)warm(k)}return send(r,200,{streams:[{name:'Phụ đề #1',title:'Tập '+ep+' • Phụ đề #1',url:BASE+'/resolve/'+encodeURIComponent(sub)+'.m3u8'},{name:'Thuyết Minh #1',title:'Tập '+ep+' • Thuyết Minh #1',url:BASE+'/resolve/'+encodeURIComponent(dub)+'.m3u8'}]})}const old=cacheFor(id);if(!old.url||Date.now()-old.at>=HLS_FRESH_MS)warm(id);return send(r,200,{streams:[{name:'CobePhim',title:old.url?'CobePhim cached fast start':'CobePhim resolver',url:BASE+'/resolve/'+encodeURIComponent(id)+'.m3u8'}]})}
  if(u.pathname.startsWith('/resolve/')){
    const id=decodeURIComponent(u.pathname.slice('/resolve/'.length).replace(/\.m3u8$/,''));
    const cached=cacheFor(id);
@@ -132,4 +127,4 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
 }catch(e){console.error('[route]',q.url,e?.stack||e);return send(r,502,{error:'proxy_failed',message:e.message})}}
 function prewarm(){for(const [key,v] of caches)if(v.url&&v.kind==='hls'&&Date.now()-v.at>=PREWARM_MS)warm(key)}
 setInterval(prewarm,60*1000).unref();
-http.createServer(route).listen(PORT,'0.0.0.0',()=>{console.log('CobePhim',manifest.version,PORT);warm(ID)});
+http.createServer(route).listen(PORT,'0.0.0.0',()=>{console.log('CobePhim',manifest.version,PORT);warm('cobephim:de-che-dai-han:tap-775372')});
