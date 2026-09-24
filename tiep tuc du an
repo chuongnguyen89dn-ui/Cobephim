@@ -53,3 +53,10 @@ Cụm “như RoPhim” KHÔNG có nghĩa là thiết kế Cobephim theo giao di
 - Resolver StreamC/Cyin mở rộng nhận host amass11 vì capture thực tế 24/09/2026 cho episode 770232 dùng seouls11.amass11.top.
 - Không thay catalog/scanner trong thay đổi này.
 - Commit code: 7cf6cb62e8efa0b9554eaa5a6d4db8b3a47451c3.
+
+
+=== 24/09/2026 — v0.4.13 STREAMVSMOV FAST PATH ===
+- Log Play thực tế xác nhận resolver chọn signed StreamVSMov master.m3u8 và upstream trả 206; media segment file-tiktok_1.png cũng trả 206.
+- v0.4.13 giữ resolver/proxy fallback nhưng với URL media thuộc StreamVSMov/StreamVSPhim/VSPhim, playlist trả URL upstream trực tiếp thay vì bắt mọi segment vòng qua Render.
+- Mục tiêu: bỏ một hop Render trên đường media để giảm startup latency/buffering cho provider StreamVSMov. Provider fake-PNG StreamC/amass11 vẫn dùng normalization/proxy hiện có.
+- Commit: a5d295d7739f851dcf6cb40004cf7f0221c1cf3c.
