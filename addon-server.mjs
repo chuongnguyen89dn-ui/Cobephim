@@ -5,7 +5,7 @@ const ID='cobephim:de-che-dai-han:775372', NAME='Đế Chế Đại Hàn';
 const TARGET='https://cobephim.cfd/phim/de-che-dai-han';
 const caches=new Map(), warmings=new Map();
 const HLS_FRESH_MS=20*60*1000, PREWARM_MS=15*60*1000;
-function cacheFor(key){if(!caches.has(key))caches.set(key,{url:'',at:0,kind:''});return caches.get(key)}
+function cacheFor(key){if(!caches.has(key))caches.set(key,{url:'',at:0,kind:'',playlist:'',playlistBase:''});return caches.get(key)}
 function targetFor(id){
  const parts=id.split(':'); const slug=parts[1]||'de-che-dai-han', ep=parts.slice(2).join(':');
  return ep&&ep.startsWith('tap-') ? `https://cobephim.cfd/phim/${slug}/${ep}` : `https://cobephim.cfd/phim/${slug}`;
@@ -20,7 +20,29 @@ async function resolveMaster(key,target=targetFor(key)){
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-blink-features=AutomationControlled','--autoplay-policy=no-user-gesture-required']});
   const cx=await browser.newContext({userAgent:hdr()['user-agent'],viewport:{width:390,height:844},locale:'vi-VN'});
   await cx.route('**/*',route=>{const u=route.request().url();if(/jwpltx\.com|whos\.amung\.us|google-analytics|googletagmanager|doubleclick|facebook\.com\/tr/i.test(u))return route.abort();return route.continue()});
-  const p=await cx.newPage(); let found='', segmentFound=''; const seen=[];
+  await cx.addInitScript(() => {
+    try{
+      const subtle=crypto.subtle, original=subtle.decrypt.bind(subtle);
+      subtle.decrypt=async function(...args){
+        const out=await original(...args);
+        try{
+          const txt=new TextDecoder().decode(out);
+          if(txt.includes('#EXTM3U')){
+            globalThis.__STREAMC_DECRYPTED={text:txt,base:location.href};
+            console.log('__STREAMC_M3U8__'+btoa(unescape(encodeURIComponent(txt))));
+          }
+        }catch{}
+        return out;
+      };
+    }catch{}
+  });
+  const p=await cx.newPage(); let found='', segmentFound='', decryptedPlaylist='', decryptedBase=''; const seen=[];
+  p.on('console',msg=>{
+    const t=msg.text();
+    if(t.startsWith('__STREAMC_M3U8__')){
+      try{decryptedPlaylist=decodeURIComponent(escape(atob(t.slice(18))));decryptedBase=p.url();console.log('[resolver] decrypted_playlist '+key+' bytes='+decryptedPlaylist.length)}catch{}
+    }
+  });
   const note=(kind,u)=>{if(/stream|m3u8|player|embed|video|tap-/i.test(u)){seen.push(kind+': '+u);console.log('[resolver]',key,kind,u.slice(0,500))}};
   const capture=u=>{try{const x=new URL(u);if(x.hostname.includes('streamvsmov.com')&&x.pathname.endsWith('/master.m3u8')){found=u;cached.url=u;cached.at=Date.now();cached.kind='hls';console.log('[resolver] preferred_hls '+key)}else if(/\/streamaaa\d+\.png$/i.test(x.pathname)&&!segmentFound){segmentFound=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');console.log('[resolver] segment_fallback_seen '+key+' host='+x.hostname)}}catch{}};
   p.on('request',q=>{note('REQ',q.url());capture(q.url())}); p.on('response',r=>{note('RES '+r.status(),r.url());capture(r.url())});
@@ -33,7 +55,18 @@ async function resolveMaster(key,target=targetFor(key)){
   }
   for(let round=0;round<4&&!found;round++){
    for(const fr of p.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),8);for(let i=0;i<n&&!found;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:800})}catch{}}catch{}
-   await p.mouse.click(195,420).catch(()=>{});await p.waitForTimeout(3000);
+   await p.mouse.click(195,420).catch(()=>{});await p.waitForTimeout(1200);
+   if(!decryptedPlaylist){
+     for(const fr of p.frames())try{
+       const d=await fr.evaluate(()=>globalThis.__STREAMC_DECRYPTED||null);
+       if(d?.text){decryptedPlaylist=d.text;decryptedBase=d.base||fr.url();break}
+     }catch{}
+   }
+   if(decryptedPlaylist&&!found)break;
+  }
+  if(!found&&decryptedPlaylist){
+    cached.playlist=decryptedPlaylist;cached.playlistBase=decryptedBase||target;cached.url='decrypted://playlist';cached.at=Date.now();cached.kind='decrypted';
+    found=cached.url;console.log('[resolver] using_decrypted_playlist '+key+' bytes='+decryptedPlaylist.length);
   }
   if(!found&&segmentFound){found=segmentFound;cached.url=segmentFound;cached.at=Date.now();cached.kind='segments';console.log('[resolver] using_segment_fallback '+key)}
   if(!found&&!cached.url){console.error('[resolver] media_not_found '+key+' final='+p.url()+' seen='+JSON.stringify(seen.slice(-50)));throw Error('fresh_master_not_found')}
@@ -46,7 +79,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.20',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.21',name:'CobePhim HLS Resolver',description:'CobePhim fresh HLS/StreamC decrypted playlist resolver.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
  {episode:2,title:'Tập 2',sub:'tap-775373',dub:'tap-775377'},
@@ -116,6 +149,15 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
    const cached=cacheFor(id);
    if(!cached.url){const job=warm(id);await Promise.race([job,new Promise((_,rej)=>setTimeout(()=>rej(Error('warming_timeout')),45000))])}
    if(!cached.url)throw Error('master_not_ready');
+   if(cached.kind==='decrypted'&&cached.playlist){
+     const base=cached.playlistBase||targetFor(id);
+     const body=cached.playlist.split(/\r?\n/).map(x=>{
+       const t=x.trim(); if(!t||t[0]==='#')return x;
+       try{return p('segment',new URL(t,base).href)}catch{return x}
+     }).join('\n');
+     r.writeHead(200,{'content-type':'application/vnd.apple.mpegurl','access-control-allow-origin':'*','cache-control':'no-store'});
+     return r.end(body)
+   }
    if(cached.kind==='segments'){const lines=['#EXTM3U','#EXT-X-VERSION:3','#EXT-X-TARGETDURATION:6','#EXT-X-MEDIA-SEQUENCE:0'];for(let i=0;i<1200;i++){lines.push('#EXTINF:4.000,');lines.push(p('segment',cached.url.replace('{n}',String(i).padStart(4,'0'))))}lines.push('#EXT-X-ENDLIST');r.writeHead(200,{'content-type':'application/vnd.apple.mpegurl','access-control-allow-origin':'*','cache-control':'no-store'});return r.end(lines.join('\n'))}
    const master=cached.url,z=await fetchUp(master);let body=await z.text();
    body=body.split(/\r?\n/).map(x=>{const t=x.trim();if(!t||t[0]==='#')return x;try{const abs=new URL(t,master).href;return /streamvsmov\.com|streamvsphim\.top|vsphim\.com/i.test(new URL(abs).hostname)?abs:p('segment',abs)}catch{return x}}).join('\n');
