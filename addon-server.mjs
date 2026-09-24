@@ -44,7 +44,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.16',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.17',name:'CobePhim HLS Resolver',description:'CobePhim StreamVSMov fake-PNG HLS normalization test.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const TEST_EPISODES=[
  {id:'tap-775372',title:'Tập 1 • Phụ đề #1',src:'https://seouls11.amass11.top/254565070f42e77cc7912d915820b662/streamaaa{n}.png'},
  {id:'tap-775373',title:'Tập 2 • Phụ đề #1',src:'https://cyin1.sbs/7a18bffd97d671647a1e173527959f48/streamaaa{n}.png'},
@@ -61,7 +61,22 @@ const TEST_EPISODES=[
  {id:'tap-780575',title:'Tập 6 • Thuyết Minh #1',src:'https://seouls11.amass11.top/963c1a9d03912bb0da78800ea47e25b9/streamaaa{n}.png'}
 ];
 for(const e of TEST_EPISODES){const k='cobephim:de-che-dai-han:'+e.id;caches.set(k,{url:e.src,at:Date.now(),kind:'segments'})}
-const item=()=>({id:'cobephim:de-che-dai-han',type:'series',name:NAME,description:'Test toàn bộ Đế Chế Đại Hàn • Phụ đề #1 + Thuyết Minh #1'});
+const TEST_INFO={
+ name:'Đế Chế Đại Hàn',
+ altName:'메이드 인 코리아',
+ description:'Lấy bối cảnh những năm 1970, Baek Gi Tae là một người đàn ông đầy tham vọng, khao khát giàu sang và quyền lực. Jang Gun Yeong là một công tố viên với bản năng hoang dã và sự ngoan cường đáng sợ. Đối mặt với một vụ án lớn, Jang Gun Yeong dốc toàn lực để ngăn chặn Baek Gi Tae. Những người xung quanh họ bao gồm nhà vận động hành lang Choi Yu Ji, điều tra viên O Ye Jin, Bae Geum Ji và Chánh văn phòng Cheon Seok Jeong.',
+ releaseInfo:'2026',
+ runtime:'53m',
+ country:'Hàn Quốc',
+ genres:['Hình Sự','Chính Kịch'],
+ cast:['Hyun Bin','Jung Woo-sung','Cha Hee','Lee Se-ho'],
+ imdbRating:'9.0',
+ status:'Hoàn Tất (6/6)',
+ network:'Disney+',
+ production:'Hive Media Corp',
+ tags:['thriller','1970s','double life']
+};
+const item=(extra={})=>({id:'cobephim:de-che-dai-han',type:'series',name:TEST_INFO.name,description:TEST_INFO.description,releaseInfo:TEST_INFO.releaseInfo,runtime:TEST_INFO.runtime,country:TEST_INFO.country,genres:TEST_INFO.genres,cast:TEST_INFO.cast,imdbRating:TEST_INFO.imdbRating,...extra});
 const SCANNER=(process.env.SCANNER_URL||'https://cobephim-full-scan.onrender.com').replace(/\/$/,'');
 let liveCatalog={at:0,metas:[],rows:[]};
 async function pullCatalog(){try{if(Date.now()-liveCatalog.at<15000&&liveCatalog.metas.length)return liveCatalog;const z=await fetch(SCANNER+'/',{headers:{'user-agent':hdr()['user-agent']}});if(!z.ok)throw Error('scanner '+z.status);const d=await z.json(),rows=Array.isArray(d.catalog)?d.catalog:[];const metas=rows.filter(x=>x.title).map(x=>({id:'cobephim:'+x.slug,type:'series',name:x.title,poster:x.poster||undefined,description:x.description||undefined,releaseInfo:x.year?String(x.year):undefined}));liveCatalog={at:Date.now(),metas,rows};console.log('[catalog] live movies='+metas.length+' scannerStatus='+d.status);return liveCatalog}catch(e){console.error('[catalog]',e.message);return liveCatalog}}
@@ -86,8 +101,8 @@ async function streamSegment(z,r){
 async function route(q,r){try{const u=new URL(q.url,'http://x');
  if(u.pathname==='/'||u.pathname==='/health')return send(r,200,{ok:true,version:manifest.version,manifest:BASE+'/manifest.json',testStream:BASE+'/stream/series/'+encodeURIComponent(ID)+'.json'});
  if(u.pathname==='/manifest.json')return send(r,200,manifest);
- if(u.pathname==='/catalog/series/cobephim.json'){const lc=await pullCatalog();const test=item(),metas=[test,...lc.metas.filter(x=>x.id!==test.id)];return send(r,200,{metas})}
- const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid==='cobephim:de-che-dai-han'||mid===ID)return send(r,200,{meta:{...item(),videos:TEST_EPISODES.map(e=>({id:'cobephim:de-che-dai-han:'+e.id,title:e.title}))}});const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
+ if(u.pathname==='/catalog/series/cobephim.json'){const lc=await pullCatalog();const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};const test=item({poster:live.poster||undefined,background:live.background||live.backdrop||undefined});const metas=[test,...lc.metas.filter(x=>x.id!==test.id)];return send(r,200,{metas})}
+ const m=u.pathname.match(/^\/meta\/series\/(.+)\.json$/);if(m){const mid=decodeURIComponent(m[1]);if(mid==='cobephim:de-che-dai-han'||mid===ID){const lc=await pullCatalog();const live=lc.rows.find(x=>x.slug==='de-che-dai-han')||{};return send(r,200,{meta:{...item({poster:live.poster||undefined,background:live.background||live.backdrop||undefined}),videos:TEST_EPISODES.map((e,i)=>({id:'cobephim:de-che-dai-han:'+e.id,title:e.title,season:2,episode:i+1}))}})}const lc=await pullCatalog(),slug=mid.replace(/^cobephim:/,'');const row=lc.rows.find(x=>x.slug===slug);return send(r,200,{meta:row?{id:mid,type:'series',name:row.title,poster:row.poster||undefined,description:row.description||undefined,releaseInfo:row.year?String(row.year):undefined,videos:(row.episodes||[]).map((e,i)=>({id:mid+':'+e.id,title:'Tập '+(i+1)}))}:null})}
  const s=u.pathname.match(/^\/stream\/series\/(.+)\.json$/);if(s){const id=decodeURIComponent(s[1]);const old=cacheFor(id);if(!old.url||Date.now()-old.at>=HLS_FRESH_MS)warm(id);return send(r,200,{streams:[{name:'CobePhim',title:old.url?'CobePhim cached fast start':'CobePhim resolver',url:BASE+'/resolve/'+encodeURIComponent(id)+'.m3u8'}]})}
  if(u.pathname.startsWith('/resolve/')){
    const id=decodeURIComponent(u.pathname.slice('/resolve/'.length).replace(/\.m3u8$/,''));
