@@ -60,3 +60,12 @@ Cụm “như RoPhim” KHÔNG có nghĩa là thiết kế Cobephim theo giao di
 - v0.4.13 giữ resolver/proxy fallback nhưng với URL media thuộc StreamVSMov/StreamVSPhim/VSPhim, playlist trả URL upstream trực tiếp thay vì bắt mọi segment vòng qua Render.
 - Mục tiêu: bỏ một hop Render trên đường media để giảm startup latency/buffering cho provider StreamVSMov. Provider fake-PNG StreamC/amass11 vẫn dùng normalization/proxy hiện có.
 - Commit: a5d295d7739f851dcf6cb40004cf7f0221c1cf3c.
+
+
+=== 24/09/2026 — v0.4.15 PRE-RESOLVED FAST START ===
+- Không xoá cache HLS mỗi lần Nuvio gọi /stream nữa. Nếu nguồn còn fresh, /stream trả resolver URL ngay và /resolve dùng master đã cache.
+- HLS cache fresh 20 phút; prewarm từ phút 15, kiểm tra mỗi phút để refresh signed master trước khi người dùng cần.
+- Playwright chỉ còn fallback khi chưa có cache/nguồn hết fresh.
+- Resolver chặn telemetry không cần thiết: jwpltx, whos.amung.us, Google analytics/tag manager, DoubleClick, Facebook tracking.
+- Giữ StreamC/amass11 fallback và proxy normalization hiện có.
+- Commit: 5caea6b5150cfcd37df5d6076be94ee159495bbc.
