@@ -1,13 +1,14 @@
 {
   "name": "cobephim-browser-player-addon",
-  "version": "0.4.6",
+  "version": "0.4.33",
   "private": true,
   "type": "module",
   "scripts": {
     "scan": "node scanner.mjs",
-    "start": "npx playwright install chromium && node addon-server.mjs",
+    "start": "node addon-server.mjs",
     "scanner-server": "node render-scanner.mjs",
-    "scanner": "npx playwright install chromium && node render-scanner.mjs"
+    "scanner": "npx playwright install chromium && node render-scanner.mjs",
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "playwright": "^1.55.0"
