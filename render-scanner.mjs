@@ -132,12 +132,12 @@ async function run(){
     await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000}); await page.waitForTimeout(900);
     const data=await page.evaluate(()=>({title:document.title,desc:document.querySelector('meta[name="description"],meta[property="og:description"]')?.content||'',poster:document.querySelector('meta[property="og:image"]')?.content||'',hrefs:[...document.querySelectorAll('a[href]')].map(a=>a.href),text:document.documentElement.innerHTML}));
     const row=map.get(url); if(!row){ok=true;seen.add(url);continue}
-    row.title=(data.title||row.title).replace(/\\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;row.year=Number(((data.text.match(/(?:19|20)\\d{2}/)||[])[0]))||null;
-    const eps=[...new Set(data.hrefs.map(episodeUrl).filter(Boolean))].filter(u=>!/\\/tap-latest(?:$|[?#])/.test(u));
+    row.title=(data.title||row.title).replace(/\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;row.year=Number(((data.text.match(/(?:19|20)\d{2}/)||[])[0]))||null;
+    const eps=[...new Set(data.hrefs.map(episodeUrl).filter(Boolean))].filter(u=>!/\/tap-latest(?:$|[?#])/.test(u));
     row.episodes=eps.map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
     for(const ep of row.episodes){
       await page.goto(ep.url,{waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{}); await page.waitForTimeout(700);
-      const variants=await page.evaluate(()=>[...document.querySelectorAll('button,[role="button"],select option,a')].map(e=>(e.innerText||e.textContent||'').trim()).filter(x=>/phụ đề|thuyết minh|lồng tiếng|server|#\\d+/i.test(x)).slice(0,20)).catch(()=>[]);
+      const variants=await page.evaluate(()=>[...document.querySelectorAll('button,[role="button"],select option,a')].map(e=>(e.innerText||e.textContent||'').trim()).filter(x=>/phụ đề|thuyết minh|lồng tiếng|server|#\d+/i.test(x)).slice(0,20)).catch(()=>[]);
       for(const label of (variants.length?variants:[''])){if(label)for(const fr of page.frames())try{const loc=fr.getByText(label,{exact:true}).first();if(await loc.count())await loc.click({timeout:500})}catch{};for(const fr of page.frames())for(const sel of ['video','.jw-display-icon-container','.jw-icon-playback','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),4);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(x=>{x.muted=true;return x.play()}):await es.nth(i).click({timeout:250})}catch{}}catch{};await page.waitForTimeout(1600)}
       ep.variants=variants;ep.resolver='harvested';
     }
