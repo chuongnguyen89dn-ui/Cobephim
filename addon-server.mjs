@@ -159,7 +159,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.33',name:'CobePhim HLS Resolver',description:'CobePhim deterministically activates JWPlayer for the verified legacy StreamVSMov test episode.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.34',name:'CobePhim HLS Resolver',description:'CobePhim deterministically activates JWPlayer for the verified legacy StreamVSMov test episode.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const EXTRA_EPISODES=[{episode:101,title:'Tập 01',sub:'tap-770232',dub:''},{episode:102,title:'Tập 01 · StreamVSMov test',sub:'tap-770240',dub:''}];
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
