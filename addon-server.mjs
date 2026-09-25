@@ -63,6 +63,19 @@ async function resolveMaster(key,target=targetFor(key)){
   p.on('response',async resp=>{
     try{
       const u=resp.url(), ct=(await resp.headerValue('content-type'))||'';
+      if(key.endsWith('tap-770232')&&resp.status()===200&&/darkbytes|streamvsmov|streamvsphim|vsphim|playlist|manifest|m3u8/i.test(u)){
+        const raw=await resp.body().catch(()=>null);
+        if(raw){
+          const txt=raw.toString('utf8');
+          if(txt.includes('#ENC-AESGCM')){
+            const iv=(txt.match(/#ENC-AESGCM;iv=([0-9a-f]+)/i)||[])[1]||'';
+            const sha=crypto.createHash('sha256').update(raw).digest('hex');
+            console.log('[legacy-encrypted-capture] url='+u+' bytes='+raw.length+' iv='+iv+' sha256='+sha);
+            const b64=raw.toString('base64');
+            for(let i=0,n=0;i<b64.length;i+=6000,n++)console.log('[legacy-encrypted-body] part='+n+' data='+b64.slice(i,i+6000));
+          }
+        }
+      }
       if(/embed\d*\.streamc\.xyz/i.test(u)&&(/\.js(?:\?|$)/i.test(u)||/javascript/i.test(ct))){
         const txt=await resp.text().catch(()=> '');
         if(txt){
@@ -134,7 +147,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.28',name:'CobePhim HLS Resolver',description:'CobePhim probes the legacy darkbytes/JWPlayer path and captures its real HLS media requests.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.29',name:'CobePhim HLS Resolver',description:'CobePhim captures encrypted legacy player responses for deterministic playlist analysis.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const EXTRA_EPISODES=[{episode:101,title:'Tập 01',sub:'tap-770232',dub:''}];
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
