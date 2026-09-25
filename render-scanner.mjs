@@ -20,7 +20,7 @@ const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/p
 const episodeUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/tap-[^/?#]+/.test(x.pathname)?x.origin+x.pathname:''}catch{return ''}};
 const addMovie=u=>{const m=movieUrl(u);if(!m)return; if(!map.has(m)){const slug=new URL(m).pathname.split('/').pop();map.set(m,{url:m,slug,title:slug.replace(/-/g,' '),poster:'',description:'',year:null,episodes:[],status:'discovered'});movieQ.push(m)}};
 const navSeen=new Set();
-const navUrl=u=>{try{const x=new URL(u,ORIGIN);if(x.origin!==ORIGIN)return '';return /^\/(?:the-loai|quoc-gia|phim-bo|phim-le|nam|studio|dao-dien)(?:\/|$)/.test(x.pathname)?x.href:''}catch{return ''}};
+const navUrl=u=>{try{const x=new URL(u,ORIGIN);if(x.origin!==ORIGIN)return '';x.hash='';x.search='';const href=x.origin+x.pathname.replace(/\/$/,'');return /^\/(?:the-loai|quoc-gia|phim-bo|phim-le|nam|studio|dao-dien)(?:\/|$)/.test(x.pathname)?href:''}catch{return ''}};
 const addNav=u=>{const n=navUrl(u);if(n&&!seen.has(n)&&!navSeen.has(n)){navSeen.add(n);q.push(n)}};
 const publish=()=>{state.movies=map.size;state.catalog=[...map.values()]};
 
@@ -73,7 +73,7 @@ async function run(){
     if(!page||page.isClosed()){console.log('RECOVER page '+url+' attempt='+attempt);await openPage()}
     await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000}).catch(e=>console.log('GOTO_TIMEOUT continue '+url));
     await page.waitForTimeout(1200);
-    for(let i=0;i<3;i++){await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));await page.waitForTimeout(500)}
+    for(let i=0;i<3;i++){try{await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight))}catch(e){if(/Execution context was destroyed|Target page|closed/i.test(String(e))){await page.waitForLoadState('domcontentloaded',{timeout:5000}).catch(()=>{});break}throw e}await page.waitForTimeout(350)}
     const data=await page.evaluate(()=>({
       title:document.title,
       desc:document.querySelector('meta[name="description"],meta[property="og:description"]')?.content||'',
@@ -113,7 +113,7 @@ async function run(){
       batch.push({title:row.title,url:row.url,poster:row.poster,year:row.year,episodes:row.episodes,media:state.media.filter(m=>m.page&&m.page.startsWith(row.url))});
       if(batch.length>=BATCH_SIZE)flushBatch();
     }
-    state.pages++;ok=true;seen.add(url);publish();console.log('DISCOVER pages='+state.pages+' movies='+state.movies+' navQueue='+q.length+' movieQueue='+movieQ.length+' url='+url);
+    state.pages++;ok=true;seen.add(url);publish();if(state.pages%8===0){console.log('DISCOVER_RECYCLE pages='+state.pages);try{await ctx?.close()}catch{};ctx=null;page=null;try{await browser?.close()}catch{};browser=null}console.log('DISCOVER pages='+state.pages+' movies='+state.movies+' navQueue='+q.length+' movieQueue='+movieQ.length+' url='+url);
    }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected()){try{await browser.close()}catch{};browser=null}}catch{};}
    }
    if(!ok){const n=(retryCount.get(url)||0)+1;retryCount.set(url,n);if(n<=1){q.push(url);console.log('REQUEUE '+url)}else{seen.add(url);console.log('GIVEUP '+url)}}
