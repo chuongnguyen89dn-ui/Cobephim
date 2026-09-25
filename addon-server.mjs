@@ -159,8 +159,8 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.30',name:'CobePhim HLS Resolver',description:'CobePhim activates the legacy JWPlayer directly and captures media produced by normal playback.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
-const EXTRA_EPISODES=[{episode:101,title:'Tập 01',sub:'tap-770232',dub:''}];
+const manifest={id:'community.cobephim.resolver',version:'0.4.31',name:'CobePhim HLS Resolver',description:'CobePhim adds the verified legacy StreamVSMov episode path while preserving the working resolver.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const EXTRA_EPISODES=[{episode:101,title:'Tập 01',sub:'tap-770232',dub:''},{episode:102,title:'Tập 01 · StreamVSMov test',sub:'tap-770240',dub:''}];
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
  {episode:2,title:'Tập 2',sub:'tap-775373',dub:'tap-775377'},
@@ -257,4 +257,4 @@ async function route(q,r){try{const u=new URL(q.url,'http://x');
 }catch(e){console.error('[route]',q.url,e?.stack||e);return send(r,502,{error:'proxy_failed',message:e.message})}}
 function prewarm(){for(const [key,v] of caches)if(v.url&&(v.kind==='hls'||v.kind==='decrypted')&&Date.now()-v.at>=PREWARM_MS)warm(key)}
 setInterval(prewarm,60*1000).unref();
-http.createServer(route).listen(PORT,'0.0.0.0',()=>{console.log('CobePhim',manifest.version,PORT);warm('cobephim:de-che-dai-han:tap-770232');warm('cobephim:de-che-dai-han:tap-775372');warm('cobephim:de-che-dai-han:tap-775376')});
+http.createServer(route).listen(PORT,'0.0.0.0',()=>{console.log('CobePhim',manifest.version,PORT);warm('cobephim:de-che-dai-han:tap-770232');warm('cobephim:de-che-dai-han:tap-770240');warm('cobephim:de-che-dai-han:tap-775372');warm('cobephim:de-che-dai-han:tap-775376')});
