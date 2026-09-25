@@ -10,6 +10,7 @@ const map=new Map(), seen=new Set(), queued=new Set();
 const SAMPLE_NAMES=['reacher','interstellar','the avengers','guardians of the galaxy','hố đen tử thần','biệt đội siêu anh hùng','vệ binh dải ngân hà'];
 const DIRECT_SAMPLES=[ORIGIN+'/phim/reacher',ORIGIN+'/phim/ho-den-tu-than',ORIGIN+'/phim/biet-doi-sieu-anh-hung',ORIGIN+'/phim/ve-binh-dai-ngan-ha'];
 const q=[...DIRECT_SAMPLES];
+const retryCount=new Map();
 const sampleMovie=u=>{try{const s=decodeURIComponent(new URL(u,ORIGIN).pathname).toLowerCase();return SAMPLE_NAMES.some(n=>s.includes(n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/\s+/g,'-')))||/\/(?:reacher|ho-den-tu-than|biet-doi-sieu-anh-hung|ve-binh-dai-ngan-ha)(?:-|\/|$)/.test(s)}catch{return false}};
 const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/?$/.test(x.pathname)?x.origin+x.pathname.replace(/\/$/,''):''}catch{return ''}};
 const episodeUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/tap-[^/?#]+/.test(x.pathname)?x.origin+x.pathname:''}catch{return ''}};
@@ -27,8 +28,10 @@ async function run(){
   console.log('BOOT Chromium ready');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
   let ctx,page;
+  const ensureBrowser=async()=>{if(!browser||!browser.isConnected()) browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']})};
   const openPage=async()=>{
    try{await ctx?.close()}catch{}
+   await ensureBrowser();
    ctx=await browser.newContext({userAgent:UA,viewport:{width:1280,height:900}});
    page=await ctx.newPage();
    page.on('request',r=>{const u=r.url();addMovie(u);captureMedia('REQ',u);});
@@ -105,9 +108,9 @@ async function run(){
       row.status='indexed';
     }
     state.pages++;ok=true;seen.add(url);publish();console.log('SCAN pages='+state.pages+' movies='+state.movies+' queue='+q.length+' url='+url);
-   }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await openPage()}catch{}}
+   }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected())browser=null}catch{};}
    }
-   if(!ok){q.push(url);console.log('REQUEUE '+url)}
+   if(!ok){const n=(retryCount.get(url)||0)+1;retryCount.set(url,n);if(n<=1){q.push(url);console.log('REQUEUE '+url)}else{seen.add(url);console.log('GIVEUP '+url)}}
    publish();
   }
   state.status='done'; console.log('SAMPLE_DONE '+JSON.stringify([...map.values()].map(x=>({title:x.title,url:x.url,episodes:x.episodes.length}))));
