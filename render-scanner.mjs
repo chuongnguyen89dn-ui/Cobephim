@@ -65,30 +65,25 @@ async function run(){
   const captureMedia=(kind,u)=>{try{const x=new URL(u);if(/\.(?:webp|gif|jpe?g|svg|ico)(?:$|\?)/i.test(u)||x.hostname==='icdn.darkbytes.xyz'||x.hostname==='zcdn.darkbytes.xyz')return;if(/\.m3u8(?:$|\?)/i.test(u)||/\/streamaaa\d+\.png(?:$|\?)/i.test(u)||/streamvsmov|streamc\.|cyin\d*\.|darkbytes|vsphim/i.test(x.hostname)){const k=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');if(!mediaSeen.has(k)){mediaSeen.add(k);state.media.push({kind,url:k,page:page.url(),at:new Date().toISOString()});console.log('MEDIA '+kind+' '+k)}}}catch{}};
   await openPage();
   state.status='discovering';
+  // Discovery is HTTP-only: Chromium is reserved for phase 2 media harvesting.
+  const httpDiscover=async(url)=>{
+    const r=await fetch(url,{headers:{'user-agent':UA,'accept':'text/html,application/xhtml+xml'}});
+    if(!r.ok)throw Error('HTTP_DISCOVER '+r.status+' '+url);
+    const html=await r.text();
+    const urls=new Set();
+    for(const m of html.matchAll(/href=["']([^"'#]+)["']/gi))try{urls.add(new URL(m[1].replace(/&amp;/g,'&'),url).href)}catch{}
+    for(const m of html.matchAll(/(?:https?:\\?\/\\?\/[^"'<>\\s]+|\\?\/phim\\?\/[^"'<>\\s]+)/g))try{urls.add(new URL(m[0].replace(/\\\//g,'/'),ORIGIN).href)}catch{}
+    for(const u of urls){addMovie(u);addNav(u)}
+    return {urls,html};
+  };
+  try{await ctx?.close()}catch{};ctx=null;page=null;try{await browser?.close()}catch{};browser=null;
   while(q.length){
    const url=q.shift(); if(seen.has(url))continue; state.lastUrl=url;
    let ok=false;
    for(let attempt=1;attempt<=3&&!ok;attempt++){
    try{
-    if(!page||page.isClosed()){console.log('RECOVER page '+url+' attempt='+attempt);await openPage()}
-    await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000}).catch(e=>console.log('GOTO_TIMEOUT continue '+url));
-    await page.waitForTimeout(1200);
-    for(let i=0;i<3;i++){try{await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight))}catch(e){if(/Execution context was destroyed|Target page|closed/i.test(String(e))){await page.waitForLoadState('domcontentloaded',{timeout:5000}).catch(()=>{});break}throw e}await page.waitForTimeout(350)}
-    const data=await page.evaluate(()=>({
-      title:document.title,
-      desc:document.querySelector('meta[name="description"],meta[property="og:description"]')?.content||'',
-      poster:document.querySelector('meta[property="og:image"]')?.content||'',
-      hrefs:[...document.querySelectorAll('a[href]')].map(a=>a.href),
-      text:document.documentElement.innerHTML
-    }));
-    const urls=new Set(data.hrefs);
-    for(const m of data.text.matchAll(/(?:https?:\\?\/\\?\/[^"'<>\\s]+|\\?\/phim\\?\/[^"'<>\\s]+)/g))try{urls.add(new URL(m[0].replace(/\\\//g,'/'),ORIGIN).href)}catch{}
-    for(const u of urls){addMovie(u);addNav(u)}
-    if(url===ORIGIN+'/'){
-      await page.waitForTimeout(2500);
-      console.log('BULK discovered movieIds='+movieIds.size+' apiResponses='+state.apiResponses);
-      await bulkEpisodes();
-    }
+    const {urls,html}=await httpDiscover(url);
+    const data={title:'',desc:'',poster:'',hrefs:[...urls],text:html};
     const here='';
     if(here){
       const row=map.get(here); row.title=(data.title||row.title).replace(/\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;
@@ -113,13 +108,13 @@ async function run(){
       batch.push({title:row.title,url:row.url,poster:row.poster,year:row.year,episodes:row.episodes,media:state.media.filter(m=>m.page&&m.page.startsWith(row.url))});
       if(batch.length>=BATCH_SIZE)flushBatch();
     }
-    state.pages++;ok=true;seen.add(url);publish();if(state.pages%8===0){console.log('DISCOVER_RECYCLE pages='+state.pages);try{await ctx?.close()}catch{};ctx=null;page=null;try{await browser?.close()}catch{};browser=null}console.log('DISCOVER pages='+state.pages+' movies='+state.movies+' navQueue='+q.length+' movieQueue='+movieQ.length+' url='+url);
+    state.pages++;ok=true;seen.add(url);publish();console.log('DISCOVER pages='+state.pages+' movies='+state.movies+' navQueue='+q.length+' movieQueue='+movieQ.length+' url='+url);
    }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected()){try{await browser.close()}catch{};browser=null}}catch{};}
    }
    if(!ok){const n=(retryCount.get(url)||0)+1;retryCount.set(url,n);if(n<=1){q.push(url);console.log('REQUEUE '+url)}else{seen.add(url);console.log('GIVEUP '+url)}}
    publish();
   }
-  console.log('DISCOVERY_DONE uniqueMovies='+map.size);
+  console.log('DISCOVERY_DONE uniqueMovies='+map.size);await openPage();
   // Phase 2: process unique movie URLs only after sitemap discovery is complete.
   state.status='harvesting';
   for(const m of movieQ) q.push(m);
