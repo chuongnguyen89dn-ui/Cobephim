@@ -8,14 +8,15 @@ const state={status:'starting',mode:'sitemap+bulk-api',started:new Date().toISOS
 const mediaSeen=new Set();
 const map=new Map(), seen=new Set(), queued=new Set();
 const SAMPLE_NAMES=['reacher','interstellar','the avengers','guardians of the galaxy','hố đen tử thần','biệt đội siêu anh hùng','vệ binh dải ngân hà'];
-const q=[ORIGIN+'/the-loai/hinh-su',ORIGIN+'/phim-le',ORIGIN+'/the-loai/chieu-rap',ORIGIN+'/the-loai/hanh-dong'];
+const DIRECT_SAMPLES=[ORIGIN+'/phim/reacher',ORIGIN+'/phim/ho-den-tu-than',ORIGIN+'/phim/biet-doi-sieu-anh-hung',ORIGIN+'/phim/ve-binh-dai-ngan-ha'];
+const q=[...DIRECT_SAMPLES];
 const sampleMovie=u=>{try{const s=decodeURIComponent(new URL(u,ORIGIN).pathname).toLowerCase();return SAMPLE_NAMES.some(n=>s.includes(n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/\s+/g,'-')))||/\/(?:reacher|ho-den-tu-than|biet-doi-sieu-anh-hung|ve-binh-dai-ngan-ha)(?:-|\/|$)/.test(s)}catch{return false}};
 const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/?$/.test(x.pathname)?x.origin+x.pathname.replace(/\/$/,''):''}catch{return ''}};
 const episodeUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/tap-[^/?#]+/.test(x.pathname)?x.origin+x.pathname:''}catch{return ''}};
 const addMovie=u=>{const m=movieUrl(u);if(!m||!sampleMovie(m))return; if(!map.has(m)){const slug=new URL(m).pathname.split('/').pop();map.set(m,{url:m,slug,title:slug.replace(/-/g,' '),poster:'',description:'',year:null,episodes:[],status:'discovered'});q.push(m)}};
 const navSeen=new Set();
 const navUrl=u=>{try{const x=new URL(u,ORIGIN);if(x.origin!==ORIGIN)return '';return /^\/(?:the-loai|quoc-gia|phim-bo|phim-le|nam|studio|dao-dien)(?:\/|$)/.test(x.pathname)?x.href:''}catch{return ''}};
-const addNav=u=>{const n=navUrl(u);if(n&&!seen.has(n)&&!navSeen.has(n)){navSeen.add(n);q.push(n)}};
+const addNav=u=>{};
 const publish=()=>{state.movies=map.size;state.catalog=[...map.values()]};
 
 async function run(){
@@ -85,7 +86,7 @@ async function run(){
     if(here){
       const row=map.get(here); row.title=(data.title||row.title).replace(/\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;
       row.year=Number(((data.text.match(/(?:19|20)\d{2}/)||[])[0]))||null;
-      const eps=[...new Set([...urls].map(episodeUrl).filter(Boolean))].filter(u=>!/\/tap-latest(?:$|[?#])/.test(u));
+      const eps=[...new Set([...urls].map(episodeUrl).filter(Boolean))].filter(u=>!/\/tap-latest(?:$|[?#])/.test(u)).slice(0,2);
       row.episodes=eps.map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
       if(row.episodes.length){
        for(const ep of row.episodes){
@@ -95,7 +96,7 @@ async function run(){
         const rounds=Math.max(1,variants.length);
         for(let v=0;v<rounds;v++){
          if(variants[v]){for(const fr of page.frames())try{const loc=fr.getByText(variants[v].text,{exact:true}).first();if(await loc.count())await loc.click({timeout:700})}catch{}}
-         for(const fr of page.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),6);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(x=>{x.muted=true;return x.play()}):await es.nth(i).click({timeout:350})}catch{}}catch{}
+         for(const fr of page.frames())for(const sel of ['video','.jw-display-icon-container','.jw-icon-playback','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),6);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(x=>{x.muted=true;return x.play()}):await es.nth(i).click({timeout:350})}catch{}}catch{}
          await page.mouse.click(640,450).catch(()=>{});await page.waitForTimeout(2600);
         }
         ep.variants=variants.map(x=>x.text);ep.resolver='harvested';
