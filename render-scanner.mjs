@@ -7,10 +7,12 @@ const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605
 const state={status:'starting',mode:'sitemap+bulk-api',started:new Date().toISOString(),pages:0,movies:0,catalog:[],media:[],errors:[],lastUrl:'',lastError:'',apiResponses:0,episodeApi:0};
 const mediaSeen=new Set();
 const map=new Map(), seen=new Set(), queued=new Set();
-const q=[ORIGIN+'/',ORIGIN+'/phim-bo',ORIGIN+'/phim-le'];
+const SAMPLE_NAMES=['reacher','interstellar','the avengers','guardians of the galaxy','hố đen tử thần','biệt đội siêu anh hùng','vệ binh dải ngân hà'];
+const q=[ORIGIN+'/the-loai/hinh-su',ORIGIN+'/phim-le',ORIGIN+'/the-loai/chieu-rap',ORIGIN+'/the-loai/hanh-dong'];
+const sampleMovie=u=>{try{const s=decodeURIComponent(new URL(u,ORIGIN).pathname).toLowerCase();return SAMPLE_NAMES.some(n=>s.includes(n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/\s+/g,'-')))||/\/(?:reacher|ho-den-tu-than|biet-doi-sieu-anh-hung|ve-binh-dai-ngan-ha)(?:-|\/|$)/.test(s)}catch{return false}};
 const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/?$/.test(x.pathname)?x.origin+x.pathname.replace(/\/$/,''):''}catch{return ''}};
 const episodeUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/tap-[^/?#]+/.test(x.pathname)?x.origin+x.pathname:''}catch{return ''}};
-const addMovie=u=>{const m=movieUrl(u);if(!m)return; if(!map.has(m)){const slug=new URL(m).pathname.split('/').pop();map.set(m,{url:m,slug,title:slug.replace(/-/g,' '),poster:'',description:'',year:null,episodes:[],status:'discovered'});q.push(m)}};
+const addMovie=u=>{const m=movieUrl(u);if(!m||!sampleMovie(m))return; if(!map.has(m)){const slug=new URL(m).pathname.split('/').pop();map.set(m,{url:m,slug,title:slug.replace(/-/g,' '),poster:'',description:'',year:null,episodes:[],status:'discovered'});q.push(m)}};
 const navSeen=new Set();
 const navUrl=u=>{try{const x=new URL(u,ORIGIN);if(x.origin!==ORIGIN)return '';return /^\/(?:the-loai|quoc-gia|phim-bo|phim-le|nam|studio|dao-dien)(?:\/|$)/.test(x.pathname)?x.href:''}catch{return ''}};
 const addNav=u=>{const n=navUrl(u);if(n&&!seen.has(n)&&!navSeen.has(n)){navSeen.add(n);q.push(n)}};
@@ -74,7 +76,7 @@ async function run(){
     const urls=new Set(data.hrefs);
     for(const m of data.text.matchAll(/(?:https?:\\?\/\\?\/[^"'<>\\s]+|\\?\/phim\\?\/[^"'<>\\s]+)/g))try{urls.add(new URL(m[0].replace(/\\\//g,'/'),ORIGIN).href)}catch{}
     for(const u of urls){addMovie(u);addNav(u)}
-    if(url===ORIGIN+'/'){
+    if(false&&url===ORIGIN+'/'){
       await page.waitForTimeout(2500);
       console.log('BULK discovered movieIds='+movieIds.size+' apiResponses='+state.apiResponses);
       await bulkEpisodes();
@@ -85,16 +87,16 @@ async function run(){
       row.year=Number(((data.text.match(/(?:19|20)\d{2}/)||[])[0]))||null;
       const eps=[...new Set([...urls].map(episodeUrl).filter(Boolean))].filter(u=>!/\/tap-latest(?:$|[?#])/.test(u));
       row.episodes=eps.map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
-      if(false&&row.episodes.length){
+      if(row.episodes.length){
        for(const ep of row.episodes){
         await page.goto(ep.url,{waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});
-        await page.waitForTimeout(700);
+        await page.waitForTimeout(1200);
         const variants=await page.evaluate(()=>[...document.querySelectorAll('button,[role="button"],select option,a')].map((e,i)=>({i,text:(e.innerText||e.textContent||'').trim()})).filter(x=>/phụ đề|thuyết minh|lồng tiếng|server|#\d+/i.test(x.text)).slice(0,20)).catch(()=>[]);
         const rounds=Math.max(1,variants.length);
         for(let v=0;v<rounds;v++){
          if(variants[v]){for(const fr of page.frames())try{const loc=fr.getByText(variants[v].text,{exact:true}).first();if(await loc.count())await loc.click({timeout:700})}catch{}}
          for(const fr of page.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),6);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(x=>{x.muted=true;return x.play()}):await es.nth(i).click({timeout:350})}catch{}}catch{}
-         await page.mouse.click(640,450).catch(()=>{});await page.waitForTimeout(1400);
+         await page.mouse.click(640,450).catch(()=>{});await page.waitForTimeout(2600);
         }
         ep.variants=variants.map(x=>x.text);ep.resolver='harvested';
        }
@@ -107,7 +109,7 @@ async function run(){
    if(!ok){q.push(url);console.log('REQUEUE '+url)}
    publish();
   }
-  state.status='done';
+  state.status='done'; console.log('SAMPLE_DONE '+JSON.stringify([...map.values()].map(x=>({title:x.title,url:x.url,episodes:x.episodes.length}))));
  }catch(e){state.status='error';state.lastError=String(e);state.errors.push(String(e));console.error(e)}
  finally{try{await ctx?.close()}catch{};if(browser)await browser.close();state.finished=new Date().toISOString()}
 }
