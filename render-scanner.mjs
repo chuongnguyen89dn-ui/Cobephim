@@ -10,6 +10,7 @@ const map=new Map(), seen=new Set(), queued=new Set();
 const SAMPLE_NAMES=['reacher','interstellar','the avengers','guardians of the galaxy','hố đen tử thần','biệt đội siêu anh hùng','vệ binh dải ngân hà'];
 const DIRECT_SAMPLES=[ORIGIN+'/phim/reacher',ORIGIN+'/phim/ho-den-tu-than',ORIGIN+'/phim/biet-doi-sieu-anh-hung',ORIGIN+'/phim/ve-binh-dai-ngan-ha'];
 const q=[ORIGIN+'/',ORIGIN+'/phim-bo',ORIGIN+'/phim-le',ORIGIN+'/the-loai/hanh-dong',ORIGIN+'/the-loai/phieu-luu',ORIGIN+'/the-loai/vien-tuong',ORIGIN+'/the-loai/chieu-rap'];
+const movieQ=[];
 const retryCount=new Map();
 const BATCH_SIZE=20;
 let batchNo=1,batch=[];
@@ -17,7 +18,7 @@ const flushBatch=()=>{if(!batch.length)return;console.log('BATCH20 '+JSON.string
 const sampleMovie=u=>{try{const s=decodeURIComponent(new URL(u,ORIGIN).pathname).toLowerCase();return SAMPLE_NAMES.some(n=>s.includes(n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/\s+/g,'-')))||/\/(?:reacher|ho-den-tu-than|biet-doi-sieu-anh-hung|ve-binh-dai-ngan-ha)(?:-|\/|$)/.test(s)}catch{return false}};
 const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/?$/.test(x.pathname)?x.origin+x.pathname.replace(/\/$/,''):''}catch{return ''}};
 const episodeUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/tap-[^/?#]+/.test(x.pathname)?x.origin+x.pathname:''}catch{return ''}};
-const addMovie=u=>{const m=movieUrl(u);if(!m)return; if(!map.has(m)){const slug=new URL(m).pathname.split('/').pop();map.set(m,{url:m,slug,title:slug.replace(/-/g,' '),poster:'',description:'',year:null,episodes:[],status:'discovered'});q.push(m)}};
+const addMovie=u=>{const m=movieUrl(u);if(!m)return; if(!map.has(m)){const slug=new URL(m).pathname.split('/').pop();map.set(m,{url:m,slug,title:slug.replace(/-/g,' '),poster:'',description:'',year:null,episodes:[],status:'discovered'});movieQ.push(m)}};
 const navSeen=new Set();
 const navUrl=u=>{try{const x=new URL(u,ORIGIN);if(x.origin!==ORIGIN)return '';return /^\/(?:the-loai|quoc-gia|phim-bo|phim-le|nam|studio|dao-dien)(?:\/|$)/.test(x.pathname)?x.href:''}catch{return ''}};
 const addNav=u=>{const n=navUrl(u);if(n&&!seen.has(n)&&!navSeen.has(n)){navSeen.add(n);q.push(n)}};
@@ -63,7 +64,7 @@ async function run(){
   };
   const captureMedia=(kind,u)=>{try{const x=new URL(u);if(/\.(?:webp|gif|jpe?g|svg|ico)(?:$|\?)/i.test(u)||x.hostname==='icdn.darkbytes.xyz'||x.hostname==='zcdn.darkbytes.xyz')return;if(/\.m3u8(?:$|\?)/i.test(u)||/\/streamaaa\d+\.png(?:$|\?)/i.test(u)||/streamvsmov|streamc\.|cyin\d*\.|darkbytes|vsphim/i.test(x.hostname)){const k=u.replace(/streamaaa\d+\.png.*$/i,'streamaaa{n}.png');if(!mediaSeen.has(k)){mediaSeen.add(k);state.media.push({kind,url:k,page:page.url(),at:new Date().toISOString()});console.log('MEDIA '+kind+' '+k)}}}catch{}};
   await openPage();
-  state.status='running';
+  state.status='discovering';
   while(q.length){
    const url=q.shift(); if(seen.has(url))continue; state.lastUrl=url;
    let ok=false;
@@ -88,7 +89,7 @@ async function run(){
       console.log('BULK discovered movieIds='+movieIds.size+' apiResponses='+state.apiResponses);
       await bulkEpisodes();
     }
-    const here=movieUrl(url);
+    const here='';
     if(here){
       const row=map.get(here); row.title=(data.title||row.title).replace(/\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;
       row.year=Number(((data.text.match(/(?:19|20)\d{2}/)||[])[0]))||null;
@@ -112,11 +113,38 @@ async function run(){
       batch.push({title:row.title,url:row.url,poster:row.poster,year:row.year,episodes:row.episodes,media:state.media.filter(m=>m.page&&m.page.startsWith(row.url))});
       if(batch.length>=BATCH_SIZE)flushBatch();
     }
-    state.pages++;ok=true;seen.add(url);publish();console.log('SCAN pages='+state.pages+' movies='+state.movies+' queue='+q.length+' url='+url);
+    state.pages++;ok=true;seen.add(url);publish();console.log('DISCOVER pages='+state.pages+' movies='+state.movies+' navQueue='+q.length+' movieQueue='+movieQ.length+' url='+url);
    }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected())browser=null}catch{};}
    }
    if(!ok){const n=(retryCount.get(url)||0)+1;retryCount.set(url,n);if(n<=1){q.push(url);console.log('REQUEUE '+url)}else{seen.add(url);console.log('GIVEUP '+url)}}
    publish();
+  }
+  console.log('DISCOVERY_DONE uniqueMovies='+map.size);
+  // Phase 2: process unique movie URLs only after sitemap discovery is complete.
+  state.status='harvesting';
+  for(const m of movieQ) q.push(m);
+  seen.clear();
+  while(q.length){
+   const url=q.shift(); if(seen.has(url))continue; state.lastUrl=url;
+   let ok=false;
+   for(let attempt=1;attempt<=2&&!ok;attempt++)try{
+    if(!page||page.isClosed())await openPage();
+    await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000}); await page.waitForTimeout(900);
+    const data=await page.evaluate(()=>({title:document.title,desc:document.querySelector('meta[name="description"],meta[property="og:description"]')?.content||'',poster:document.querySelector('meta[property="og:image"]')?.content||'',hrefs:[...document.querySelectorAll('a[href]')].map(a=>a.href),text:document.documentElement.innerHTML}));
+    const row=map.get(url); if(!row){ok=true;seen.add(url);continue}
+    row.title=(data.title||row.title).replace(/\\s*[-|].*$/,'').trim();row.description=data.desc;row.poster=data.poster;row.year=Number(((data.text.match(/(?:19|20)\\d{2}/)||[])[0]))||null;
+    const eps=[...new Set(data.hrefs.map(episodeUrl).filter(Boolean))].filter(u=>!/\\/tap-latest(?:$|[?#])/.test(u));
+    row.episodes=eps.map((u,i)=>({url:u,id:new URL(u).pathname.split('/').pop(),index:i+1,resolver:'pending'}));
+    for(const ep of row.episodes){
+      await page.goto(ep.url,{waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{}); await page.waitForTimeout(700);
+      const variants=await page.evaluate(()=>[...document.querySelectorAll('button,[role="button"],select option,a')].map(e=>(e.innerText||e.textContent||'').trim()).filter(x=>/phụ đề|thuyết minh|lồng tiếng|server|#\\d+/i.test(x)).slice(0,20)).catch(()=>[]);
+      for(const label of (variants.length?variants:[''])){if(label)for(const fr of page.frames())try{const loc=fr.getByText(label,{exact:true}).first();if(await loc.count())await loc.click({timeout:500})}catch{};for(const fr of page.frames())for(const sel of ['video','.jw-display-icon-container','.jw-icon-playback','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),4);for(let i=0;i<n;i++)try{sel==='video'?await es.nth(i).evaluate(x=>{x.muted=true;return x.play()}):await es.nth(i).click({timeout:250})}catch{}}catch{};await page.waitForTimeout(1600)}
+      ep.variants=variants;ep.resolver='harvested';
+    }
+    row.status='indexed';batch.push({title:row.title,url:row.url,poster:row.poster,year:row.year,episodes:row.episodes,media:state.media.filter(x=>x.page&&x.page.startsWith(row.url))});if(batch.length>=BATCH_SIZE)flushBatch();
+    ok=true;seen.add(url);console.log('HARVEST done='+seen.size+'/'+movieQ.length+' title='+row.title);
+   }catch(e){state.errors.push(String(e));state.lastError=String(e);console.error('HARVEST_ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected())browser=null}catch{}}
+   if(!ok)console.log('HARVEST_GIVEUP '+url);
   }
   flushBatch();state.status='done'; console.log('FULL_SCAN_DONE '+JSON.stringify([...map.values()].map(x=>({title:x.title,url:x.url,episodes:x.episodes.length}))));
  }catch(e){state.status='error';state.lastError=String(e);state.errors.push(String(e));console.error(e)}
