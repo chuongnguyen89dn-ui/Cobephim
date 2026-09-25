@@ -11,6 +11,9 @@ const SAMPLE_NAMES=['reacher','interstellar','the avengers','guardians of the ga
 const DIRECT_SAMPLES=[ORIGIN+'/phim/reacher',ORIGIN+'/phim/ho-den-tu-than',ORIGIN+'/phim/biet-doi-sieu-anh-hung',ORIGIN+'/phim/ve-binh-dai-ngan-ha'];
 const q=[ORIGIN+'/',ORIGIN+'/phim-bo',ORIGIN+'/phim-le',ORIGIN+'/the-loai/hanh-dong',ORIGIN+'/the-loai/phieu-luu',ORIGIN+'/the-loai/vien-tuong',ORIGIN+'/the-loai/chieu-rap'];
 const retryCount=new Map();
+const BATCH_SIZE=20;
+let batchNo=1,batch=[];
+const flushBatch=()=>{if(!batch.length)return;console.log('BATCH20 '+JSON.stringify({batch:batchNo,count:batch.length,movies:batch}));state.lastBatch={batch:batchNo,count:batch.length,movies:batch};batchNo++;batch=[]};
 const sampleMovie=u=>{try{const s=decodeURIComponent(new URL(u,ORIGIN).pathname).toLowerCase();return SAMPLE_NAMES.some(n=>s.includes(n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/\s+/g,'-')))||/\/(?:reacher|ho-den-tu-than|biet-doi-sieu-anh-hung|ve-binh-dai-ngan-ha)(?:-|\/|$)/.test(s)}catch{return false}};
 const movieUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/?$/.test(x.pathname)?x.origin+x.pathname.replace(/\/$/,''):''}catch{return ''}};
 const episodeUrl=u=>{try{const x=new URL(u,ORIGIN);return x.origin===ORIGIN&&/^\/phim\/[^/?#]+\/tap-[^/?#]+/.test(x.pathname)?x.origin+x.pathname:''}catch{return ''}};
@@ -106,6 +109,8 @@ async function run(){
        }
       }
       row.status='indexed';
+      batch.push({title:row.title,url:row.url,poster:row.poster,year:row.year,episodes:row.episodes,media:state.media.filter(m=>m.page&&m.page.startsWith(row.url))});
+      if(batch.length>=BATCH_SIZE)flushBatch();
     }
     state.pages++;ok=true;seen.add(url);publish();console.log('SCAN pages='+state.pages+' movies='+state.movies+' queue='+q.length+' url='+url);
    }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected())browser=null}catch{};}
@@ -113,7 +118,7 @@ async function run(){
    if(!ok){const n=(retryCount.get(url)||0)+1;retryCount.set(url,n);if(n<=1){q.push(url);console.log('REQUEUE '+url)}else{seen.add(url);console.log('GIVEUP '+url)}}
    publish();
   }
-  state.status='done'; console.log('FULL_SCAN_DONE '+JSON.stringify([...map.values()].map(x=>({title:x.title,url:x.url,episodes:x.episodes.length}))));
+  flushBatch();state.status='done'; console.log('FULL_SCAN_DONE '+JSON.stringify([...map.values()].map(x=>({title:x.title,url:x.url,episodes:x.episodes.length}))));
  }catch(e){state.status='error';state.lastError=String(e);state.errors.push(String(e));console.error(e)}
  finally{try{await ctx?.close()}catch{};if(browser)await browser.close();state.finished=new Date().toISOString()}
 }
