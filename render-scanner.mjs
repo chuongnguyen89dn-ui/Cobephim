@@ -32,7 +32,7 @@ async function run(){
   console.log('BOOT Chromium ready');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
   let ctx,page;
-  const ensureBrowser=async()=>{if(!browser||!browser.isConnected()) browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']})};
+  const ensureBrowser=async()=>{if(browser&&browser.isConnected())return;try{await browser?.close()}catch{};browser=null;for(let i=1;i<=3;i++){try{browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});if(browser.isConnected())return}catch(e){console.error('BROWSER_RELAUNCH attempt='+i+' '+e);browser=null}await new Promise(r=>setTimeout(r,1200*i))}throw Error('browser_relaunch_failed')};
   const openPage=async()=>{
    try{await ctx?.close()}catch{}
    await ensureBrowser();
@@ -114,7 +114,7 @@ async function run(){
       if(batch.length>=BATCH_SIZE)flushBatch();
     }
     state.pages++;ok=true;seen.add(url);publish();console.log('DISCOVER pages='+state.pages+' movies='+state.movies+' navQueue='+q.length+' movieQueue='+movieQ.length+' url='+url);
-   }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected())browser=null}catch{};}
+   }catch(e){state.lastError=String(e);state.errors.push(String(e));console.error('ERR attempt='+attempt+' '+url+' '+e);try{await ctx?.close()}catch{};ctx=null;page=null;try{if(browser&&!browser.isConnected()){try{await browser.close()}catch{};browser=null}}catch{};}
    }
    if(!ok){const n=(retryCount.get(url)||0)+1;retryCount.set(url,n);if(n<=1){q.push(url);console.log('REQUEUE '+url)}else{seen.add(url);console.log('GIVEUP '+url)}}
    publish();
