@@ -122,8 +122,20 @@ async function resolveMaster(key,target=targetFor(key)){
    if(episode){console.log('[resolver] episode_found '+episode);await p.goto(episode,{waitUntil:'domcontentloaded',timeout:60000}).catch(()=>{});await p.waitForTimeout(1200)}
   }
   for(let round=0;round<8&&!found&&!segmentFound;round++){
-   for(const fr of p.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),8);for(let i=0;i<n&&!found;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:800})}catch{}}catch{}
-   await p.mouse.click(195,420).catch(()=>{});for(let i=0;i<11&&!found&&!segmentFound;i++)await p.waitForTimeout(200);
+   if(key.endsWith('tap-770232')){
+     for(const fr of p.frames())try{
+       const host=new URL(fr.url()).hostname;
+       if(host.includes('darkbytes.xyz')){
+         await fr.evaluate(()=>{try{const v=document.querySelector('video');if(v){v.muted=true;v.playsInline=true;v.play().catch(()=>{})}if(globalThis.jwplayer){const j=globalThis.jwplayer();if(j&&typeof j.play==='function')j.play(true)}}catch{}});
+         for(const sel of ['.jw-icon-playback','.jw-display-icon-container','.jw-display-controls','video'])try{const el=fr.locator(sel).first();if(await el.count())await el.click({timeout:1200,force:true}).catch(()=>{})}catch{}
+         console.log('[legacy-play] activated '+fr.url());
+       }
+     }catch{}
+   }else{
+     for(const fr of p.frames())for(const sel of ['video','button','[class*="play" i]','[id*="play" i]'])try{const es=fr.locator(sel),n=Math.min(await es.count(),8);for(let i=0;i<n&&!found;i++)try{sel==='video'?await es.nth(i).evaluate(v=>{v.muted=true;return v.play()}):await es.nth(i).click({timeout:800})}catch{}}catch{}
+     await p.mouse.click(195,420).catch(()=>{});
+   }
+   for(let i=0;i<20&&!found&&!segmentFound;i++)await p.waitForTimeout(250);
    if(!decryptedPlaylist){
      for(const fr of p.frames())try{
        const d=await fr.evaluate(()=>globalThis.__STREAMC_DECRYPTED||null);
@@ -147,7 +159,7 @@ function warm(key=ID,target=targetFor(key)){
  const job=resolveMaster(key,target).catch(e=>{console.error('[warm]',key,e?.stack||e);return ''}).finally(()=>warmings.delete(key));
  warmings.set(key,job); return job;
 }
-const manifest={id:'community.cobephim.resolver',version:'0.4.29',name:'CobePhim HLS Resolver',description:'CobePhim captures encrypted legacy player responses for deterministic playlist analysis.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
+const manifest={id:'community.cobephim.resolver',version:'0.4.30',name:'CobePhim HLS Resolver',description:'CobePhim activates the legacy JWPlayer directly and captures media produced by normal playback.',resources:['catalog','meta','stream'],types:['series'],catalogs:[{type:'series',id:'cobephim',name:'CobePhim'}],idPrefixes:['cobephim:']};
 const EXTRA_EPISODES=[{episode:101,title:'Tập 01',sub:'tap-770232',dub:''}];
 const TEST_EPISODES=[
  {episode:1,title:'Tập 1',sub:'tap-775372',dub:'tap-775376'},
